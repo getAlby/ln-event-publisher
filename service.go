@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -102,6 +103,7 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 		return err
 	}
 	if invoice.State == lnrpc.Invoice_SETTLED {
+		logrus.Infof("Publishing invoice with hash %s", hex.EncodeToString(invoice.RHash))
 		return svc.publisher.PublishWithContext(
 			ctx,
 			//todo from config
