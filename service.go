@@ -14,13 +14,19 @@ import (
 )
 
 type Config struct {
-	LNDAddress              string `envconfig:"LND_ADDRESS" required:"true"`
-	LNDMacaroonHex          string `envconfig:"LND_MACAROON_HEX"`
-	LNDCertHex              string `envconfig:"LND_CERT_HEX"`
-	RabbitMQInvoiceExchange string `envconfig:"RABBITMQ_INVOICE_EXCHANGE" default:"lnd_invoices"`
-	RabbitMQChannelExchange string `envconfig:"RABBITMQ_CHANNEL_EXCHANGE" default:"lnd_channels"`
-	RabbitMQUri             string `envconfig:"RABBITMQ_URI"`
+	LNDAddress           string `envconfig:"LND_ADDRESS" required:"true"`
+	LNDMacaroonHex       string `envconfig:"LND_MACAROON_HEX"`
+	LNDCertHex           string `envconfig:"LND_CERT_HEX"`
+	RabbitMQExchangeName string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_channels"`
+	RabbitMQUri          string `envconfig:"RABBITMQ_URI"`
 }
+
+const (
+	LNDInvoiceExchange = "lnd_invoices"
+	LNDChannelExchange = "lnd_channels"
+	LNDPaymentExchange = "lnd_payments"
+)
+
 type Service struct {
 	cfg       *Config
 	lnd       *LNDWrapper
@@ -38,20 +44,7 @@ func (svc *Service) InitRabbitMq() (err error) {
 	}
 	err = ch.ExchangeDeclare(
 		//TODO: review exchange config
-		svc.cfg.RabbitMQInvoiceExchange,
-		"topic", // type
-		true,    // durable
-		false,   // auto-deleted
-		false,   // internal
-		false,   // no-wait
-		nil,     // arguments
-	)
-	if err != nil {
-		return err
-	}
-	err = ch.ExchangeDeclare(
-		//TODO: review exchange config
-		svc.cfg.RabbitMQChannelExchange,
+		svc.cfg.RabbitMQExchangeName,
 		"topic", // type
 		true,    // durable
 		false,   // auto-deleted
@@ -82,7 +75,7 @@ func (svc *Service) startChannelEventSubscription(ctx context.Context) error {
 				return err
 			}
 			key := fmt.Sprintf("lnd.channel.%s", chanEvent.Type.String())
-			err = svc.PublishPayload(ctx, chanEvent, svc.cfg.RabbitMQChannelExchange, key)
+			err = svc.PublishPayload(ctx, chanEvent, svc.cfg.RabbitMQExchangeName, key)
 			if err != nil {
 				logrus.Error(err)
 			}
@@ -98,6 +91,7 @@ func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	logrus.Info("Starting payment subscription")
 	for {
 		select {
 		case <-ctx.Done():
@@ -107,7 +101,12 @@ func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			fmt.Println(payment.PaymentRequest)
+			key := fmt.Sprintf("lnd.payment.%s", payment.Status.String())
+			err = svc.PublishPayload(ctx, payment, svc.cfg.RabbitMQExchangeName, key)
+			if err != nil {
+				logrus.Error(err)
+			}
+
 		}
 	}
 }
@@ -138,7 +137,7 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	if invoice.State == lnrpc.Invoice_SETTLED {
 		logrus.Infof("Publishing invoice with hash %s", hex.EncodeToString(invoice.RHash))
-		return svc.PublishPayload(ctx, invoice, svc.cfg.RabbitMQInvoiceExchange, "lnd_invoices.incoming.settled")
+		return svc.PublishPayload(ctx, invoice, svc.cfg.RabbitMQExchangeName, "lnd_invoices.incoming.settled")
 	}
 	return nil
 }

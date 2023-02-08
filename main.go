@@ -46,20 +46,14 @@ func main() {
 	}
 	backgroundCtx := context.Background()
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
-	//start payment loop
-	//lnd doesn't support this yet LOL
-	//go func() {
-	//	err = svc.startPaymentsSubscription(backgroundCtx)
-	//	if err != nil {
-	//		logrus.Error(err)
-	//	}
-	//}()
-	//start invoice loop
-	go func() {
-		err = svc.startChannelEventSubscription(ctx)
-		if err != nil {
-			logrus.Error(err)
-		}
-	}()
-	logrus.Error(svc.startInvoiceSubscription(ctx))
+	switch svc.cfg.RabbitMQExchangeName {
+	case LNDInvoiceExchange:
+		logrus.Fatal(svc.startInvoiceSubscription(ctx))
+	case LNDChannelExchange:
+		logrus.Fatal(svc.startChannelEventSubscription(ctx))
+	case LNDPaymentExchange:
+		logrus.Fatal(svc.startPaymentsSubscription(ctx))
+	default:
+		logrus.Fatalf("Did not recognize subscription type: %s", svc.cfg.RabbitMQExchangeName)
+	}
 }
