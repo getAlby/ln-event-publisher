@@ -18,6 +18,7 @@ type Config struct {
 	LNDMacaroonHex          string `envconfig:"LND_MACAROON_HEX"`
 	LNDCertHex              string `envconfig:"LND_CERT_HEX"`
 	RabbitMQInvoiceExchange string `envconfig:"RABBITMQ_INVOICE_EXCHANGE" default:"lnd_invoices"`
+	RabbitMQChannelExchange string `envconfig:"RABBITMQ_CHANNEL_EXCHANGE" default:"lnd_channels"`
 	RabbitMQUri             string `envconfig:"RABBITMQ_URI"`
 }
 type Service struct {
@@ -48,8 +49,46 @@ func (svc *Service) InitRabbitMq() (err error) {
 	if err != nil {
 		return err
 	}
+	err = ch.ExchangeDeclare(
+		//TODO: review exchange config
+		svc.cfg.RabbitMQChannelExchange,
+		"topic", // type
+		true,    // durable
+		false,   // auto-deleted
+		false,   // internal
+		false,   // no-wait
+		nil,     // arguments
+	)
+	if err != nil {
+		return err
+	}
 	svc.publisher = ch
 	return
+}
+
+func (svc *Service) startChannelEventSubscription(ctx context.Context) error {
+	chanSub, err := svc.lnd.client.SubscribeChannelEvents(ctx, &lnrpc.ChannelEventSubscription{})
+	if err != nil {
+		return err
+	}
+	logrus.Info("Starting channel subscription")
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("Context canceled")
+		default:
+			chanEvent, err := chanSub.Recv()
+			if err != nil {
+				return err
+			}
+			key := fmt.Sprintf("lnd.channel.%s", chanEvent.Type.String())
+			err = svc.PublishPayload(ctx, chanEvent, svc.cfg.RabbitMQChannelExchange, key)
+			if err != nil {
+				logrus.Error(err)
+			}
+			logrus.Infof("Published channel event %s", chanEvent.Type.String())
+		}
+	}
 }
 
 func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
@@ -97,21 +136,25 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
 }
 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
-	payload := new(bytes.Buffer)
-	err := json.NewEncoder(payload).Encode(invoice)
+	if invoice.State == lnrpc.Invoice_SETTLED {
+		logrus.Infof("Publishing invoice with hash %s", hex.EncodeToString(invoice.RHash))
+		return svc.PublishPayload(ctx, invoice, svc.cfg.RabbitMQInvoiceExchange, "lnd_invoices.incoming.settled")
+	}
+	return nil
+}
+
+func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exchange, key string) error {
+	payloadBytes := new(bytes.Buffer)
+	err := json.NewEncoder(payloadBytes).Encode(payload)
 	if err != nil {
 		return err
 	}
-	if invoice.State == lnrpc.Invoice_SETTLED {
-		logrus.Infof("Publishing invoice with hash %s", hex.EncodeToString(invoice.RHash))
-		return svc.publisher.PublishWithContext(
-			ctx,
-			//todo from config
-			svc.cfg.RabbitMQInvoiceExchange, "lnd_invoices.incoming.settled", false, false, amqp.Publishing{
-				ContentType: "application/json",
-				Body:        payload.Bytes(),
-			},
-		)
-	}
-	return nil
+	return svc.publisher.PublishWithContext(
+		ctx,
+		//todo from config
+		exchange, key, false, false, amqp.Publishing{
+			ContentType: "application/json",
+			Body:        payloadBytes.Bytes(),
+		},
+	)
 }

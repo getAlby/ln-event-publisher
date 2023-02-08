@@ -55,5 +55,11 @@ func main() {
 	//	}
 	//}()
 	//start invoice loop
+	go func() {
+		err = svc.startChannelEventSubscription(ctx)
+		if err != nil {
+			logrus.Error(err)
+		}
+	}()
 	logrus.Error(svc.startInvoiceSubscription(ctx))
 }
