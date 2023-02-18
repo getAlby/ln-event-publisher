@@ -22,9 +22,10 @@ type Config struct {
 }
 
 const (
-	LNDInvoiceExchange = "lnd_invoices"
-	LNDChannelExchange = "lnd_channels"
-	LNDPaymentExchange = "lnd_payments"
+	LNDInvoiceExchange   = "lnd_invoices"
+	LNDInvoiceRoutingKey = "invoice.incoming.settled"
+	LNDChannelExchange   = "lnd_channels"
+	LNDPaymentExchange   = "lnd_payments"
 )
 
 type Service struct {
@@ -137,7 +138,7 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	if invoice.State == lnrpc.Invoice_SETTLED {
 		logrus.Infof("Publishing invoice with hash %s", hex.EncodeToString(invoice.RHash))
-		return svc.PublishPayload(ctx, invoice, svc.cfg.RabbitMQExchangeName, "lnd_invoices.incoming.settled")
+		return svc.PublishPayload(ctx, invoice, svc.cfg.RabbitMQExchangeName, LNDInvoiceRoutingKey)
 	}
 	return nil
 }
