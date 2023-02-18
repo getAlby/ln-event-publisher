@@ -22,10 +22,10 @@ type Config struct {
 }
 
 const (
-	LNDInvoiceExchange   = "lnd_invoices"
+	LNDInvoiceExchange   = "lnd_invoice"
 	LNDInvoiceRoutingKey = "invoice.incoming.settled"
-	LNDChannelExchange   = "lnd_channels"
-	LNDPaymentExchange   = "lnd_payments"
+	LNDChannelExchange   = "lnd_channel"
+	LNDPaymentExchange   = "lnd_payment"
 )
 
 type Service struct {
@@ -75,7 +75,7 @@ func (svc *Service) startChannelEventSubscription(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			key := fmt.Sprintf("lnd.channel.%s", chanEvent.Type.String())
+			key := fmt.Sprintf("channel.%s", chanEvent.Type.String())
 			err = svc.PublishPayload(ctx, chanEvent, svc.cfg.RabbitMQExchangeName, key)
 			if err != nil {
 				logrus.Error(err)
@@ -102,7 +102,7 @@ func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			key := fmt.Sprintf("lnd.payment.%s", payment.Status.String())
+			key := fmt.Sprintf("payment.outgoing.%s", payment.Status.String())
 			err = svc.PublishPayload(ctx, payment, svc.cfg.RabbitMQExchangeName, key)
 			if err != nil {
 				logrus.Error(err)
