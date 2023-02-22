@@ -17,15 +17,16 @@ type Config struct {
 	LNDAddress           string `envconfig:"LND_ADDRESS" required:"true"`
 	LNDMacaroonHex       string `envconfig:"LND_MACAROON_HEX"`
 	LNDCertHex           string `envconfig:"LND_CERT_HEX"`
-	RabbitMQExchangeName string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_channels"`
+	RabbitMQExchangeName string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
 	RabbitMQUri          string `envconfig:"RABBITMQ_URI"`
+	InvoiceAddIndex      uint64 `envconfig:"INVOICE_ADD_INDEX" default:"0"`
 }
 
 const (
 	LNDInvoiceExchange   = "lnd_invoice"
-	LNDInvoiceRoutingKey = "invoice.incoming.settled"
 	LNDChannelExchange   = "lnd_channel"
 	LNDPaymentExchange   = "lnd_payment"
+	LNDInvoiceRoutingKey = "invoice.incoming.settled"
 )
 
 type Service struct {
@@ -113,7 +114,9 @@ func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
 }
 
 func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
-	invoiceSub, err := svc.lnd.client.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{})
+	invoiceSub, err := svc.lnd.client.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{
+		AddIndex: svc.cfg.InvoiceAddIndex,
+	})
 	if err != nil {
 		return err
 	}
