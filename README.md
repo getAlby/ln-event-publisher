@@ -3,10 +3,10 @@
 This service subscribes to certain LND gRPC subscriptions and publishes those events on a RabbitMQ topic exchange.
 
 General configuration env vars (always needed):
-- "LND_ADDRESS"
-- "LND_MACAROON_HEX"
-- "LND_CERT_HEX"
-- "RABBITMQ_URI"
+- "LND_ADDRESS": `your-lnd-host:10009`
+- "LND_MACAROON_HEX": LND macaroon in hex format
+- "LND_CERT_HEX": LND certificate in hex format
+- "RABBITMQ_URI": `amqp://user:password@host/vhost`
 
 The service will do different things based on the environment variable `RABBITMQ_EXCHANGE_NAME`, which is also the exchange where the service will be publishing.
 
