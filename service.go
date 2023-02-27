@@ -14,12 +14,12 @@ import (
 )
 
 type Config struct {
-	LNDAddress           string `envconfig:"LND_ADDRESS" required:"true"`
-	LNDMacaroonHex       string `envconfig:"LND_MACAROON_HEX"`
-	LNDCertHex           string `envconfig:"LND_CERT_HEX"`
-	RabbitMQExchangeName string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
-	RabbitMQUri          string `envconfig:"RABBITMQ_URI"`
-	InvoiceAddIndex      uint64 `envconfig:"INVOICE_ADD_INDEX" default:"0"`
+	LNDAddress            string `envconfig:"LND_ADDRESS" required:"true"`
+	LNDMacaroonHex        string `envconfig:"LND_MACAROON_HEX"`
+	LNDCertHex            string `envconfig:"LND_CERT_HEX"`
+	RabbitMQExchangeName  string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
+	RabbitMQUri           string `envconfig:"RABBITMQ_URI"`
+	LookupInvoiceAddIndex bool   `envconfig:"LOOKUP_INVOICE_ADD_INDEX" default:"0"`
 }
 
 const (
@@ -113,14 +113,24 @@ func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
 	}
 }
 
-func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
+func (svc *Service) lookupLastAddIndex(ctx context.Context) (result uint64, err error) {
+	//declare queue (x-max-length=1)
+	//bind queue
+	//get last item from queue
+	//decode
+	//return addIndex
+	return 0, err
+}
+
+func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint64) error {
 	invoiceSub, err := svc.lnd.client.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{
-		AddIndex: svc.cfg.InvoiceAddIndex,
+		AddIndex: addIndex,
 	})
 	if err != nil {
 		return err
 	}
 	logrus.Info("Starting invoice subscription")
+	//svc: ack lookup add index here
 	for {
 		select {
 		case <-ctx.Done():

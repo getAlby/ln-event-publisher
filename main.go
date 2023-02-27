@@ -46,9 +46,19 @@ func main() {
 	}
 	backgroundCtx := context.Background()
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
+
+	addIndex := uint64(0)
+	if svc.cfg.LookupInvoiceAddIndex {
+		//lookup last invoice added from special queue
+		addIndex, err = svc.lookupLastAddIndex(ctx)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+
+	}
 	switch svc.cfg.RabbitMQExchangeName {
 	case LNDInvoiceExchange:
-		logrus.Fatal(svc.startInvoiceSubscription(ctx))
+		logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex))
 	case LNDChannelExchange:
 		logrus.Fatal(svc.startChannelEventSubscription(ctx))
 	case LNDPaymentExchange:
