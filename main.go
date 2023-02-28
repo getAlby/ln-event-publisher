@@ -31,7 +31,7 @@ func main() {
 	if err != nil {
 		logrus.Fatalf("Error loading environment variables: %v", err)
 	}
-	resp, err := client.client.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
+	resp, err := client.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -64,10 +64,6 @@ func main() {
 	switch svc.cfg.RabbitMQExchangeName {
 	case LNDInvoiceExchange:
 		logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex))
-	case LNDChannelExchange:
-		logrus.Fatal(svc.startChannelEventSubscription(ctx))
-	case LNDPaymentExchange:
-		logrus.Fatal(svc.startPaymentsSubscription(ctx))
 	default:
 		logrus.Fatalf("Did not recognize subscription type: %s", svc.cfg.RabbitMQExchangeName)
 	}

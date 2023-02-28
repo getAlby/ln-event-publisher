@@ -8,7 +8,6 @@ import (
 	"fmt"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/lightningnetwork/lnd/lnrpc/routerrpc"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -32,7 +31,7 @@ const (
 
 type Service struct {
 	cfg       *Config
-	lnd       *LNDWrapper
+	lnd       LNDWrapper
 	publisher *amqp.Channel
 	db        *gorm.DB
 }
@@ -62,59 +61,6 @@ func (svc *Service) InitRabbitMq() (err error) {
 	svc.publisher = ch
 	return
 }
-
-func (svc *Service) startChannelEventSubscription(ctx context.Context) error {
-	chanSub, err := svc.lnd.client.SubscribeChannelEvents(ctx, &lnrpc.ChannelEventSubscription{})
-	if err != nil {
-		return err
-	}
-	logrus.Info("Starting channel subscription")
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("Context canceled")
-		default:
-			chanEvent, err := chanSub.Recv()
-			if err != nil {
-				return err
-			}
-			key := fmt.Sprintf("channel.%s", chanEvent.Type.String())
-			err = svc.PublishPayload(ctx, chanEvent, svc.cfg.RabbitMQExchangeName, key)
-			if err != nil {
-				logrus.Error(err)
-			}
-			logrus.Infof("Published channel event %s", chanEvent.Type.String())
-		}
-	}
-}
-
-func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
-	paymentsSub, err := svc.lnd.routerClient.TrackPayments(ctx, &routerrpc.TrackPaymentsRequest{
-		NoInflightUpdates: true,
-	})
-	if err != nil {
-		return err
-	}
-	logrus.Info("Starting payment subscription")
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("Context canceled")
-		default:
-			payment, err := paymentsSub.Recv()
-			if err != nil {
-				return err
-			}
-			key := fmt.Sprintf("payment.outgoing.%s", payment.Status.String())
-			err = svc.PublishPayload(ctx, payment, svc.cfg.RabbitMQExchangeName, key)
-			if err != nil {
-				logrus.Error(err)
-			}
-
-		}
-	}
-}
-
 func (svc *Service) lookupLastAddIndex(ctx context.Context) (result uint64, err error) {
 	//get last item from db
 	inv := &Invoice{}
@@ -133,7 +79,7 @@ func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.
 }
 
 func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint64) error {
-	invoiceSub, err := svc.lnd.client.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{
+	invoiceSub, err := svc.lnd.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{
 		AddIndex: addIndex,
 	})
 	if err != nil {
