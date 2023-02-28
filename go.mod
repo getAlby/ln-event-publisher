@@ -8,6 +8,7 @@ require (
 	github.com/lightningnetwork/lnd v0.16.0-beta.rc1
 	github.com/rabbitmq/amqp091-go v1.6.1
 	github.com/sirupsen/logrus v1.9.0
+	github.com/stretchr/testify v1.8.1
 	google.golang.org/grpc v1.52.3
 	gopkg.in/macaroon.v2 v2.1.0
 	gorm.io/driver/postgres v1.3.8
@@ -108,7 +109,6 @@ require (
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.5.0 // indirect
-	github.com/stretchr/testify v1.8.1 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
