@@ -139,7 +139,7 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 	if err != nil {
 		return err
 	}
-	logrus.Info("Starting invoice subscription")
+	logrus.Infof("Starting invoice subscription from index %d", addIndex)
 	for {
 		select {
 		case <-ctx.Done():
@@ -153,10 +153,6 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 			if err != nil {
 				return err
 			}
-			err = svc.AddLastPublishedInvoice(ctx, inv)
-			if err != nil {
-				return err
-			}
 		}
 	}
 }
@@ -164,7 +160,12 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	if invoice.State == lnrpc.Invoice_SETTLED {
 		logrus.Infof("Publishing invoice with hash %s", hex.EncodeToString(invoice.RHash))
-		return svc.PublishPayload(ctx, invoice, svc.cfg.RabbitMQExchangeName, LNDInvoiceRoutingKey)
+		err := svc.PublishPayload(ctx, invoice, svc.cfg.RabbitMQExchangeName, LNDInvoiceRoutingKey)
+		if err != nil {
+			return err
+		}
+		//save last published invoice
+		return svc.AddLastPublishedInvoice(ctx, invoice)
 	}
 	return nil
 }

@@ -49,6 +49,7 @@ func main() {
 
 	addIndex := uint64(0)
 	if svc.cfg.DatabaseUri != "" {
+		logrus.Info("Opening PG database")
 		db, err := OpenDB(svc.cfg)
 		if err != nil {
 			logrus.Fatal(err)
@@ -58,6 +59,7 @@ func main() {
 		if err != nil {
 			logrus.Fatal(err)
 		}
+		logrus.Infof("Found last add index in db: %d", addIndex)
 	}
 	switch svc.cfg.RabbitMQExchangeName {
 	case LNDInvoiceExchange:
