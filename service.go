@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -89,7 +88,7 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("Context canceled")
+			return context.Canceled
 		default:
 			inv, err := invoiceSub.Recv()
 			if err != nil {
