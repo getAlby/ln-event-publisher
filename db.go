@@ -20,5 +20,4 @@ func OpenDB(config *Config) (db *gorm.DB, err error) {
 type Invoice struct {
 	gorm.Model
 	AddIndex uint64
-	RHash    string
 }

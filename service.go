@@ -117,12 +117,19 @@ func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
 
 func (svc *Service) lookupLastAddIndex(ctx context.Context) (result uint64, err error) {
 	//get last item from db
+	inv := &Invoice{}
+	tx := svc.db.Last(inv)
+	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
+		return 0, tx.Error
+	}
 	//return addIndex
-	return 0, err
+	return inv.AddIndex, nil
 }
-func (svc *Service) UpdateLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
-	//todo
-	return nil
+
+func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
+	return svc.db.Create(&Invoice{
+		AddIndex: invoice.AddIndex,
+	}).Error
 }
 
 func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint64) error {
@@ -146,7 +153,7 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 			if err != nil {
 				return err
 			}
-			err = svc.UpdateLastPublishedInvoice(ctx, inv)
+			err = svc.AddLastPublishedInvoice(ctx, inv)
 			if err != nil {
 				return err
 			}
