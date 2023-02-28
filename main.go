@@ -48,13 +48,16 @@ func main() {
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
 	addIndex := uint64(0)
-	if svc.cfg.LookupInvoiceAddIndex {
-		//lookup last invoice added from special queue
+	if svc.cfg.DatabaseUri != "" {
+		db, err := OpenDB(svc.cfg)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		svc.db = db
 		addIndex, err = svc.lookupLastAddIndex(ctx)
 		if err != nil {
 			logrus.Fatal(err)
 		}
-
 	}
 	switch svc.cfg.RabbitMQExchangeName {
 	case LNDInvoiceExchange:

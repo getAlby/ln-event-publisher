@@ -16,7 +16,7 @@ The service will do different things based on the environment variable `RABBITMQ
 # LND incoming invoices
 - Payload [lnrpc.Invoice](https://github.com/lightningnetwork/lnd/blob/master/lnrpc/lightning.pb.go#L11597) struct.
 - Routing key: `invoice.incoming.settled`
-- `INVOICE_ADD_INDEX`: if specified, ask LND about historical invoices starting _after_ this add_index. **WARNING**: asking LND for too many invoices at once will cause it to use a lot of memory. 
+- `DATABASE_URI`: if specified, initialize and migrate a PG database table to store the last published invoice. On startup, we can fetch the add_index of the last published invoice and ask LND for all invoices since that one, to ensure we don't miss any.
 # LND outgoing payments
 Not supported yet (waiting for new LND release)
 # LND channel events

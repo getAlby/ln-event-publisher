@@ -11,15 +11,16 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc/routerrpc"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 type Config struct {
-	LNDAddress            string `envconfig:"LND_ADDRESS" required:"true"`
-	LNDMacaroonHex        string `envconfig:"LND_MACAROON_HEX"`
-	LNDCertHex            string `envconfig:"LND_CERT_HEX"`
-	RabbitMQExchangeName  string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
-	RabbitMQUri           string `envconfig:"RABBITMQ_URI"`
-	LookupInvoiceAddIndex bool   `envconfig:"LOOKUP_INVOICE_ADD_INDEX" default:"0"`
+	LNDAddress           string `envconfig:"LND_ADDRESS" required:"true"`
+	LNDMacaroonHex       string `envconfig:"LND_MACAROON_HEX"`
+	LNDCertHex           string `envconfig:"LND_CERT_HEX"`
+	DatabaseUri          string `envconfig:"DATABASE_URI"`
+	RabbitMQExchangeName string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
+	RabbitMQUri          string `envconfig:"RABBITMQ_URI"`
 }
 
 const (
@@ -33,6 +34,7 @@ type Service struct {
 	cfg       *Config
 	lnd       *LNDWrapper
 	publisher *amqp.Channel
+	db        *gorm.DB
 }
 
 func (svc *Service) InitRabbitMq() (err error) {
@@ -114,12 +116,13 @@ func (svc *Service) startPaymentsSubscription(ctx context.Context) error {
 }
 
 func (svc *Service) lookupLastAddIndex(ctx context.Context) (result uint64, err error) {
-	//declare queue (x-max-length=1)
-	//bind queue
-	//get last item from queue
-	//decode
+	//get last item from db
 	//return addIndex
 	return 0, err
+}
+func (svc *Service) UpdateLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
+	//todo
+	return nil
 }
 
 func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint64) error {
@@ -130,7 +133,6 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 		return err
 	}
 	logrus.Info("Starting invoice subscription")
-	//svc: ack lookup add index here
 	for {
 		select {
 		case <-ctx.Done():
@@ -141,6 +143,10 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 				return err
 			}
 			err = svc.ProcessInvoice(ctx, inv)
+			if err != nil {
+				return err
+			}
+			err = svc.UpdateLastPublishedInvoice(ctx, inv)
 			if err != nil {
 				return err
 			}
