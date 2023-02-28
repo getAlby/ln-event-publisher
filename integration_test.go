@@ -19,7 +19,6 @@ func TestLNEventPublisher(t *testing.T) {
 		},
 		addIndexCounter: 0,
 	}
-	// - init PG
 	cfg := &Config{
 		DatabaseUri:          os.Getenv("DATABASE_URI"),
 		RabbitMQExchangeName: "lnd_invoice",
@@ -29,6 +28,7 @@ func TestLNEventPublisher(t *testing.T) {
 	svc := &Service{cfg: cfg}
 	err := svc.InitRabbitMq()
 	assert.NoError(t, err)
+	// - init PG
 	db, err := OpenDB(cfg)
 	assert.NoError(t, err)
 	svc.db = db
