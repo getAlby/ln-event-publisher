@@ -63,7 +63,7 @@ func (svc *Service) InitRabbitMq() (err error) {
 func (svc *Service) lookupLastAddIndex(ctx context.Context) (result uint64, err error) {
 	//get last item from db
 	inv := &Invoice{}
-	tx := svc.db.Last(inv)
+	tx := svc.db.WithContext(ctx).Last(inv)
 	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
 		return 0, tx.Error
 	}
