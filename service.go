@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
@@ -22,6 +23,7 @@ type Config struct {
 	DatabaseConnMaxLifetime int    `envconfig:"DATABASE_CONN_MAX_LIFETIME" default:"1800"` // 30 minutes
 	RabbitMQExchangeName    string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
 	RabbitMQUri             string `envconfig:"RABBITMQ_URI"`
+	SentryDSN               string `envconfig:"SENTRY_DSN"`
 }
 
 const (
@@ -85,6 +87,7 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 		AddIndex: addIndex,
 	})
 	if err != nil {
+		sentry.CaptureException(err)
 		return err
 	}
 	logrus.Infof("Starting invoice subscription from index %d", addIndex)
@@ -95,10 +98,12 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 		default:
 			inv, err := invoiceSub.Recv()
 			if err != nil {
+				sentry.CaptureException(err)
 				return err
 			}
 			err = svc.ProcessInvoice(ctx, inv)
 			if err != nil {
+				sentry.CaptureException(err)
 				return err
 			}
 		}
