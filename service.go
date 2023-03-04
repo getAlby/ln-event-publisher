@@ -13,12 +13,15 @@ import (
 )
 
 type Config struct {
-	LNDAddress           string `envconfig:"LND_ADDRESS" required:"true"`
-	LNDMacaroonHex       string `envconfig:"LND_MACAROON_HEX"`
-	LNDCertHex           string `envconfig:"LND_CERT_HEX"`
-	DatabaseUri          string `envconfig:"DATABASE_URI"`
-	RabbitMQExchangeName string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
-	RabbitMQUri          string `envconfig:"RABBITMQ_URI"`
+	LNDAddress              string `envconfig:"LND_ADDRESS" required:"true"`
+	LNDMacaroonHex          string `envconfig:"LND_MACAROON_HEX"`
+	LNDCertHex              string `envconfig:"LND_CERT_HEX"`
+	DatabaseUri             string `envconfig:"DATABASE_URI"`
+	DatabaseMaxConns        int    `envconfig:"DATABASE_MAX_CONNS" default:"10"`
+	DatabaseMaxIdleConns    int    `envconfig:"DATABASE_MAX_IDLE_CONNS" default:"5"`
+	DatabaseConnMaxLifetime int    `envconfig:"DATABASE_CONN_MAX_LIFETIME" default:"1800"` // 30 minutes
+	RabbitMQExchangeName    string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
+	RabbitMQUri             string `envconfig:"RABBITMQ_URI"`
 }
 
 const (
@@ -72,7 +75,7 @@ func (svc *Service) lookupLastAddIndex(ctx context.Context) (result uint64, err 
 }
 
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
-	return svc.db.Create(&Invoice{
+	return svc.db.WithContext(ctx).Create(&Invoice{
 		AddIndex: invoice.AddIndex,
 	}).Error
 }

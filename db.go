@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -10,6 +12,13 @@ func OpenDB(config *Config) (db *gorm.DB, err error) {
 	if err != nil {
 		return nil, err
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(config.DatabaseMaxConns)
+	sqlDB.SetMaxIdleConns(config.DatabaseMaxIdleConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(config.DatabaseConnMaxLifetime) * time.Second)
 	err = db.AutoMigrate(&Invoice{})
 	if err != nil {
 		return nil, err
