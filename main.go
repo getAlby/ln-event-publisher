@@ -26,7 +26,6 @@ func main() {
 	}
 
 	// Setup exception tracking with Sentry if configured
-	// sentry init needs to happen before the echo middlewares are added
 	if c.SentryDSN != "" {
 		if err = sentry.Init(sentry.ClientOptions{
 			Dsn: c.SentryDSN,
