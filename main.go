@@ -31,7 +31,7 @@ func main() {
 	if err != nil {
 		logrus.Fatalf("Error loading environment variables: %v", err)
 	}
-	resp, err := client.client.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
+	resp, err := client.GetInfo(context.Background(), &lnrpc.GetInfoRequest{})
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -46,13 +46,24 @@ func main() {
 	}
 	backgroundCtx := context.Background()
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
+
+	addIndex := uint64(0)
+	if svc.cfg.DatabaseUri != "" {
+		logrus.Info("Opening PG database")
+		db, err := OpenDB(svc.cfg)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		svc.db = db
+		addIndex, err = svc.lookupLastAddIndex(ctx)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		logrus.Infof("Found last add index in db: %d", addIndex)
+	}
 	switch svc.cfg.RabbitMQExchangeName {
 	case LNDInvoiceExchange:
-		logrus.Fatal(svc.startInvoiceSubscription(ctx))
-	case LNDChannelExchange:
-		logrus.Fatal(svc.startChannelEventSubscription(ctx))
-	case LNDPaymentExchange:
-		logrus.Fatal(svc.startPaymentsSubscription(ctx))
+		logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex))
 	default:
 		logrus.Fatalf("Did not recognize subscription type: %s", svc.cfg.RabbitMQExchangeName)
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
@@ -14,7 +15,7 @@ import (
 	"gopkg.in/macaroon.v2"
 )
 
-func NewLNDclient(lndOptions LNDoptions) (result *LNDWrapper, err error) {
+func NewLNDclient(lndOptions LNDoptions) (result LNDWrapper, err error) {
 	var creds credentials.TransportCredentials
 	if lndOptions.CertHex != "" {
 		cp := x509.NewCertPool()
@@ -57,7 +58,7 @@ func NewLNDclient(lndOptions LNDoptions) (result *LNDWrapper, err error) {
 		return nil, err
 	}
 
-	return &LNDWrapper{
+	return &LNDWrapperImpl{
 		client:       lnrpc.NewLightningClient(conn),
 		routerClient: routerrpc.NewRouterClient(conn),
 	}, nil
@@ -69,7 +70,22 @@ type LNDoptions struct {
 	MacaroonHex string
 }
 
-type LNDWrapper struct {
+type LNDWrapper interface {
+	GetInfo(ctx context.Context, req *lnrpc.GetInfoRequest) (*lnrpc.GetInfoResponse, error)
+	SubscribeInvoices(ctx context.Context, req *lnrpc.InvoiceSubscription) (LNDChannelSubscriptionWrapper, error)
+}
+
+type LNDChannelSubscriptionWrapper interface {
+	Recv() (*lnrpc.Invoice, error)
+}
+type LNDWrapperImpl struct {
 	client       lnrpc.LightningClient
 	routerClient routerrpc.RouterClient
+}
+
+func (lndw *LNDWrapperImpl) GetInfo(ctx context.Context, req *lnrpc.GetInfoRequest) (*lnrpc.GetInfoResponse, error) {
+	return lndw.client.GetInfo(ctx, req)
+}
+func (lndw *LNDWrapperImpl) SubscribeInvoices(ctx context.Context, req *lnrpc.InvoiceSubscription) (LNDChannelSubscriptionWrapper, error) {
+	return lndw.client.SubscribeInvoices(ctx, req)
 }
