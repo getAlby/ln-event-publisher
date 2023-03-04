@@ -11,8 +11,6 @@ import (
 )
 
 func TestLNEventPublisher(t *testing.T) {
-	// todo
-	// - mock LND
 	mlnd := &MockLND{
 		Sub: &MockSubscribeInvoices{
 			invoiceChan: make(chan *lnrpc.Invoice),
