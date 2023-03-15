@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/getAlby/lndhub.go/lnd"
 	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -33,10 +34,10 @@ func main() {
 			logrus.Error(err)
 		}
 	}
-	client, err := NewLNDclient(LNDoptions{
-		Address:     c.LNDAddress,
-		CertHex:     c.LNDCertHex,
-		MacaroonHex: c.LNDMacaroonHex,
+	client, err := lnd.NewLNDclient(lnd.LNDoptions{
+		Address:      c.LNDAddress,
+		MacaroonFile: c.LNDMacaroonFile,
+		CertFile:     c.LNDCertFile,
 	})
 	if err != nil {
 		sentry.CaptureException(err)

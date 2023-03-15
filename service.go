@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
+	"github.com/getAlby/lndhub.go/lnd"
 	"github.com/getsentry/sentry-go"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -15,8 +16,8 @@ import (
 
 type Config struct {
 	LNDAddress              string `envconfig:"LND_ADDRESS" required:"true"`
-	LNDMacaroonHex          string `envconfig:"LND_MACAROON_HEX"`
-	LNDCertHex              string `envconfig:"LND_CERT_HEX"`
+	LNDMacaroonFile         string `envconfig:"LND_MACAROON_FILE"`
+	LNDCertFile             string `envconfig:"LND_CERT_FILE"`
 	DatabaseUri             string `envconfig:"DATABASE_URI"`
 	DatabaseMaxConns        int    `envconfig:"DATABASE_MAX_CONNS" default:"10"`
 	DatabaseMaxIdleConns    int    `envconfig:"DATABASE_MAX_IDLE_CONNS" default:"5"`
@@ -35,7 +36,7 @@ const (
 
 type Service struct {
 	cfg       *Config
-	lnd       LNDWrapper
+	lnd       lnd.LightningClientWrapper
 	publisher *amqp.Channel
 	db        *gorm.DB
 }

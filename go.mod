@@ -8,9 +8,6 @@ require (
 	github.com/lightningnetwork/lnd v0.16.0-beta.rc1
 	github.com/rabbitmq/amqp091-go v1.6.1
 	github.com/sirupsen/logrus v1.9.0
-	github.com/stretchr/testify v1.8.1
-	google.golang.org/grpc v1.52.3
-	gopkg.in/macaroon.v2 v2.1.0
 	gorm.io/driver/postgres v1.3.8
 	gorm.io/gorm v1.23.8
 )
@@ -19,12 +16,14 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/lightninglabs/neutrino/cache v1.1.0 // indirect
+	github.com/stretchr/testify v1.8.1 // indirect
+	google.golang.org/grpc v1.52.3 // indirect
+	gopkg.in/macaroon.v2 v2.1.0 // indirect
 )
 
 require (
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect
 	github.com/aead/siphash v1.0.1 // indirect
-	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/btcsuite/btcd v0.23.5-0.20230125025938-be056b0a0b2f // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
@@ -51,12 +50,12 @@ require (
 	github.com/decred/dcrd/lru v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fergusstrange/embedded-postgres v1.20.0 // indirect
+	github.com/getAlby/lndhub.go v0.0.0-20230304124642-bdd94315270f
 	github.com/getsentry/sentry-go v0.18.0
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-macaroon-bakery/macaroonpb v1.0.0 // indirect
-	github.com/gofrs/uuid v4.2.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.4.3 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
