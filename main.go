@@ -76,6 +76,8 @@ func main() {
 			logrus.Fatal(err)
 		}
 		logrus.Infof("Found last add index in db: %d", addIndex)
+	} else {
+		logrus.Info("Starting without a PG database")
 	}
 	switch svc.cfg.RabbitMQExchangeName {
 	case LNDInvoiceExchange:

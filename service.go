@@ -118,8 +118,10 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 		if err != nil {
 			return err
 		}
-		//save last published invoice
-		return svc.AddLastPublishedInvoice(ctx, invoice)
+		//add it to the database if we have one
+		if svc.db != nil {
+			return svc.AddLastPublishedInvoice(ctx, invoice)
+		}
 	}
 	return nil
 }
