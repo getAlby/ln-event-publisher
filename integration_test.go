@@ -87,7 +87,7 @@ func TestLNEventPublisher(t *testing.T) {
 	err = json.NewDecoder(r).Decode(&receivedInvoice)
 	assert.NoError(t, err)
 	assert.Equal(t, "integration test", receivedInvoice.Memo)
-	assert.Equal(t, 100, receivedInvoice.Value)
+	assert.Equal(t, int64(100), receivedInvoice.Value)
 
 	//stop service
 	cancel()
