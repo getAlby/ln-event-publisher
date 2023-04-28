@@ -42,7 +42,7 @@ func TestLNEventPublisher(t *testing.T) {
 		nil,
 	)
 	assert.NoError(t, err)
-	err = svc.rabbitChannel.QueueBind(q.Name, "#", svc.cfg.RabbitMQExchangeName, false, nil)
+	err = svc.rabbitChannel.QueueBind(q.Name, LNDInvoiceRoutingKey, svc.cfg.RabbitMQExchangeName, false, nil)
 	assert.NoError(t, err)
 
 	// - init PG
@@ -73,7 +73,7 @@ func TestLNEventPublisher(t *testing.T) {
 	//consume channel to check that invoice was published
 	m, err := svc.rabbitChannel.Consume(
 		q.Name,
-		"invoice.*.*",
+		"",
 		true,
 		false,
 		false,
