@@ -35,10 +35,10 @@ const (
 )
 
 type Service struct {
-	cfg       *Config
-	lnd       lnd.LightningClientWrapper
-	publisher *amqp.Channel
-	db        *gorm.DB
+	cfg           *Config
+	lnd           lnd.LightningClientWrapper
+	rabbitChannel *amqp.Channel
+	db            *gorm.DB
 }
 
 func (svc *Service) InitRabbitMq() (err error) {
@@ -63,7 +63,7 @@ func (svc *Service) InitRabbitMq() (err error) {
 	if err != nil {
 		return err
 	}
-	svc.publisher = ch
+	svc.rabbitChannel = ch
 	return
 }
 func (svc *Service) lookupLastAddIndex(ctx context.Context) (result uint64, err error) {
@@ -132,7 +132,7 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 	if err != nil {
 		return err
 	}
-	return svc.publisher.PublishWithContext(
+	return svc.rabbitChannel.PublishWithContext(
 		ctx,
 		//todo from config
 		exchange, key, false, false, amqp.Publishing{

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -29,6 +31,20 @@ func TestLNEventPublisher(t *testing.T) {
 	svc := &Service{cfg: cfg}
 	err := svc.InitRabbitMq()
 	assert.NoError(t, err)
+
+	//sub to the rabbit exchange ourselves to test e2e
+	q, err := svc.rabbitChannel.QueueDeclare(
+		"integration_test",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	assert.NoError(t, err)
+	err = svc.rabbitChannel.QueueBind(q.Name, "#", svc.cfg.RabbitMQExchangeName, false, nil)
+	assert.NoError(t, err)
+
 	// - init PG
 	db, err := OpenDB(cfg)
 	assert.NoError(t, err)
@@ -45,7 +61,7 @@ func TestLNEventPublisher(t *testing.T) {
 	}()
 	// - mock incoming invoice
 	// the new invoice that will be saved will have addIndex + 1
-	err = mlnd.mockPaidInvoice(100)
+	err = mlnd.mockPaidInvoice(100, "integration test")
 	assert.NoError(t, err)
 	//wait a bit for update to happen
 	time.Sleep(100 * time.Millisecond)
@@ -53,8 +69,29 @@ func TestLNEventPublisher(t *testing.T) {
 	newAddIndex, err := svc.lookupLastAddIndex(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, addIndex+1, newAddIndex)
+
+	//consume channel to check that invoice was published
+	m, err := svc.rabbitChannel.Consume(
+		q.Name,
+		"invoice.*.*",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	assert.NoError(t, err)
+	msg := <-m
+	var receivedInvoice lnrpc.Invoice
+	r := bytes.NewReader(msg.Body)
+	err = json.NewDecoder(r).Decode(&receivedInvoice)
+	assert.NoError(t, err)
+	assert.Equal(t, "integration test", receivedInvoice.Memo)
+	assert.Equal(t, 100, receivedInvoice.Value)
+
 	//stop service
 	cancel()
+	svc.rabbitChannel.Close()
 	// - clean up database
 	svc.db.Exec("delete from invoices;")
 	// - Add PG / Rabbit in CI to run tests on GH actions
@@ -84,11 +121,11 @@ func (mlnd *MockLND) SubscribeInvoices(ctx context.Context, req *lnrpc.InvoiceSu
 	return mlnd.Sub, nil
 }
 
-func (mlnd *MockLND) mockPaidInvoice(amtPaid int64) error {
+func (mlnd *MockLND) mockPaidInvoice(amtPaid int64, memo string) error {
 	mlnd.addIndexCounter += 1
 	incoming := &lnrpc.Invoice{
 		AddIndex:       mlnd.addIndexCounter,
-		Memo:           "",
+		Memo:           memo,
 		Value:          amtPaid,
 		ValueMsat:      1000 * amtPaid,
 		Settled:        true,
