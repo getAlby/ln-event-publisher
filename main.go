@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/getAlby/lndhub.go/lnd"
+	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"

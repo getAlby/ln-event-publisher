@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/getAlby/lndhub.go/lnd"
+	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/lnrpc/routerrpc"
 	"github.com/stretchr/testify/assert"

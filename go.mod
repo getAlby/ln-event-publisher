@@ -8,17 +8,19 @@ require (
 	github.com/lightningnetwork/lnd v0.16.0-beta.rc1
 	github.com/rabbitmq/amqp091-go v1.6.1
 	github.com/sirupsen/logrus v1.9.0
+	github.com/stretchr/testify v1.8.1
+	google.golang.org/grpc v1.52.3
+	gopkg.in/macaroon.v2 v2.1.0
 	gorm.io/driver/postgres v1.3.8
 	gorm.io/gorm v1.23.8
 )
 
 require (
+	github.com/benbjohnson/clock v1.3.0 // indirect
+	github.com/gofrs/uuid v4.2.0+incompatible // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/lightninglabs/neutrino/cache v1.1.0 // indirect
-	github.com/stretchr/testify v1.8.1 // indirect
-	google.golang.org/grpc v1.52.3 // indirect
-	gopkg.in/macaroon.v2 v2.1.0 // indirect
 )
 
 require (
@@ -50,7 +52,6 @@ require (
 	github.com/decred/dcrd/lru v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fergusstrange/embedded-postgres v1.20.0 // indirect
-	github.com/getAlby/lndhub.go v0.0.0-20230304124642-bdd94315270f
 	github.com/getsentry/sentry-go v0.18.0
 	github.com/go-errors/errors v1.4.2 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
