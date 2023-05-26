@@ -62,6 +62,7 @@ func main() {
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
 	addIndex := uint64(0)
+	paymentAddIndex := uint64(0)
 	if svc.cfg.DatabaseUri != "" {
 		logrus.Info("Opening PG database")
 		db, err := OpenDB(svc.cfg)
@@ -70,7 +71,7 @@ func main() {
 			logrus.Fatal(err)
 		}
 		svc.db = db
-		addIndex, err = svc.lookupLastAddIndex(ctx)
+		addIndex, err = svc.lookupLastAddIndex(svc.cfg.RabbitMQExchangeName, ctx)
 		if err != nil {
 			sentry.CaptureException(err)
 			logrus.Fatal(err)
@@ -82,6 +83,8 @@ func main() {
 	switch svc.cfg.RabbitMQExchangeName {
 	case LNDInvoiceExchange:
 		logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex))
+	case LNDPaymentExchange:
+		logrus.Fatal(svc.startPaymentSubscription(ctx, paymentAddIndex))
 	default:
 		logrus.Fatalf("Did not recognize subscription type: %s", svc.cfg.RabbitMQExchangeName)
 	}

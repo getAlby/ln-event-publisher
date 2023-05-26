@@ -1,2 +1,3 @@
 ln-event-publisher
 .env
+*.macaroon

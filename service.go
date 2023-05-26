@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
 	"github.com/lightningnetwork/lnd/lnrpc"
+	"github.com/lightningnetwork/lnd/lnrpc/routerrpc"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -66,21 +68,55 @@ func (svc *Service) InitRabbitMq() (err error) {
 	svc.rabbitChannel = ch
 	return
 }
-func (svc *Service) lookupLastAddIndex(ctx context.Context) (result uint64, err error) {
-	//get last item from db
-	inv := &Invoice{}
-	tx := svc.db.WithContext(ctx).Last(inv)
-	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
-		return 0, tx.Error
+func (svc *Service) lookupLastAddIndex(exchangeName string, ctx context.Context) (result uint64, err error) {
+	switch exchangeName {
+	case LNDInvoiceExchange:
+		//get last item from db
+		inv := &Invoice{}
+		tx := svc.db.WithContext(ctx).Last(inv)
+		if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
+			return 0, tx.Error
+		}
+		//return addIndex
+		return inv.AddIndex, nil
+	case LNDPaymentExchange:
+		//todo
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("Unrecognized exchange name %s", exchangeName)
 	}
-	//return addIndex
-	return inv.AddIndex, nil
 }
 
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	return svc.db.WithContext(ctx).Create(&Invoice{
 		AddIndex: invoice.AddIndex,
 	}).Error
+}
+
+func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint64) error {
+	paymentSub, err := svc.lnd.SubscribePayments(ctx, &routerrpc.TrackPaymentsRequest{})
+	if err != nil {
+		sentry.CaptureException(err)
+		return err
+	}
+	logrus.Infof("Starting payment subscription from index %d", addIndex)
+	for {
+		select {
+		case <-ctx.Done():
+			return context.Canceled
+		default:
+			payment, err := paymentSub.Recv()
+			if err != nil {
+				sentry.CaptureException(err)
+				return err
+			}
+			err = svc.ProcessPayment(ctx, payment)
+			if err != nil {
+				sentry.CaptureException(err)
+				return err
+			}
+		}
+	}
 }
 
 func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint64) error {
@@ -109,6 +145,14 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 			}
 		}
 	}
+}
+
+func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) error {
+	fmt.Println(payment.Status)
+	fmt.Println(payment.PaymentIndex)
+	fmt.Println(payment.ValueSat)
+	fmt.Println("----------")
+	return nil
 }
 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {

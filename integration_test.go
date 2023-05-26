@@ -50,7 +50,7 @@ func TestLNEventPublisher(t *testing.T) {
 	assert.NoError(t, err)
 	svc.db = db
 	svc.lnd = mlnd
-	addIndex, err := svc.lookupLastAddIndex(context.Background())
+	addIndex, err := svc.lookupLastAddIndex(LNDInvoiceExchange, context.Background())
 	assert.NoError(t, err)
 	//the first time, add index should be 0
 	assert.Equal(t, uint64(0), addIndex)
@@ -66,7 +66,7 @@ func TestLNEventPublisher(t *testing.T) {
 	//wait a bit for update to happen
 	time.Sleep(100 * time.Millisecond)
 	// - check if add index is saved correctly
-	newAddIndex, err := svc.lookupLastAddIndex(context.Background())
+	newAddIndex, err := svc.lookupLastAddIndex(LNDInvoiceExchange, context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, addIndex+1, newAddIndex)
 
@@ -120,7 +120,6 @@ func (mlnd *MockLND) SubscribeInvoices(ctx context.Context, req *lnrpc.InvoiceSu
 	mlnd.addIndexCounter = req.AddIndex
 	return mlnd.Sub, nil
 }
-
 func (mlnd *MockLND) mockPaidInvoice(amtPaid int64, memo string) error {
 	mlnd.addIndexCounter += 1
 	incoming := &lnrpc.Invoice{
@@ -154,6 +153,10 @@ func (mlnd *MockLND) AddInvoice(ctx context.Context, req *lnrpc.Invoice, options
 
 func (mlnd *MockLND) SubscribePayment(ctx context.Context, req *routerrpc.TrackPaymentRequest, options ...grpc.CallOption) (lnd.SubscribePaymentWrapper, error) {
 	panic("not implemented") // TODO: Implement
+}
+
+func (wrapper *MockLND) SubscribePayments(ctx context.Context, req *routerrpc.TrackPaymentsRequest, options ...grpc.CallOption) (lnd.SubscribePaymentWrapper, error) {
+	panic("not implemented")
 }
 
 func (mlnd *MockLND) DecodeBolt11(ctx context.Context, bolt11 string, options ...grpc.CallOption) (*lnrpc.PayReq, error) {
