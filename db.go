@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	"github.com/lightningnetwork/lnd/lnrpc"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -33,5 +34,6 @@ type Invoice struct {
 
 type Payment struct {
 	gorm.Model
+	Status   lnrpc.Payment_PaymentStatus
 	AddIndex uint64
 }

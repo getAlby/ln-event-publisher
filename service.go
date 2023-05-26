@@ -16,6 +16,11 @@ import (
 	"gorm.io/gorm"
 )
 
+var codeMappings = map[lnrpc.Payment_PaymentStatus]string{
+	lnrpc.Payment_FAILED:    LNDPaymentErrorRoutingKey,
+	lnrpc.Payment_SUCCEEDED: LNDPaymentSuccessRoutingKey,
+}
+
 type Config struct {
 	LNDAddress              string `envconfig:"LND_ADDRESS" required:"true"`
 	LNDMacaroonFile         string `envconfig:"LND_MACAROON_FILE"`
@@ -95,21 +100,29 @@ func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.
 	}).Error
 }
 
-func (svc *Service) AddLastPublishedPayment(ctx context.Context, payment *lnrpc.Payment) error {
+func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) error {
 	return svc.db.WithContext(ctx).Create(&Payment{
+		Status:   payment.Status,
 		AddIndex: payment.PaymentIndex,
 	}).Error
 }
 
+func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context) {
+	//look up index of earliest non-final payment in db
+	//make LND listpayments request
+	//check all invoices
+	//call process invoice on all final (succes/error) payments that might be in there
+	//and are not already in the database as final
+}
+
 func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint64) error {
-	paymentSub, err := svc.lnd.SubscribePayments(ctx, &routerrpc.TrackPaymentsRequest{
-		// we don't need in flight updates
-		NoInflightUpdates: true,
-	})
+	paymentSub, err := svc.lnd.SubscribePayments(ctx, &routerrpc.TrackPaymentsRequest{})
 	if err != nil {
 		sentry.CaptureException(err)
 		return err
 	}
+	//check LND for payments we might have missed while offline
+	go svc.CheckPaymentsSinceLastIndex(ctx)
 	logrus.Infof("Starting payment subscription from index %d", addIndex)
 	for {
 		select {
@@ -159,28 +172,18 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 }
 
 func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) error {
-	codeMappings := map[lnrpc.Payment_PaymentStatus]string{
-		lnrpc.Payment_FAILED:    LNDPaymentErrorRoutingKey,
-		lnrpc.Payment_SUCCEEDED: LNDPaymentSuccessRoutingKey,
-	}
 	routingKey, ok := codeMappings[payment.Status]
-	if !ok {
-		err := fmt.Errorf("Did not recognize payment status: %v", payment.Status)
-		logrus.WithField("payment", payment).Error(err)
-		sentry.CaptureException(err)
-		//if we get an unknown payment status here something is wrong
-		//log it and capture it, but there is no need to crash I think
-		return nil
+	if ok {
+		//only publish if non-pending
+		logrus.Infof("Publishing payment with hash %s", payment.PaymentHash)
+		err := svc.PublishPayload(ctx, payment, svc.cfg.RabbitMQExchangeName, routingKey)
+		if err != nil {
+			return err
+		}
 	}
-
-	logrus.Infof("Publishing payment with hash %s", payment.PaymentHash)
-	err := svc.PublishPayload(ctx, payment, svc.cfg.RabbitMQExchangeName, routingKey)
-	if err != nil {
-		return err
-	}
-	//add it to the database if we have one
+	//always add it to the database if we have one
 	if svc.db != nil {
-		return svc.AddLastPublishedPayment(ctx, payment)
+		return svc.StorePayment(ctx, payment)
 	}
 	return nil
 }
