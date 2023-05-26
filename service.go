@@ -109,10 +109,30 @@ func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) er
 
 func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context) {
 	//look up index of earliest non-final payment in db
-	//make LND listpayments request
-	//check all invoices
+	firstInflight := &Payment{}
+	err := svc.db.Where(&Payment{
+		Status: lnrpc.Payment_IN_FLIGHT,
+	}).First(firstInflight).Error
+	if err != nil {
+		logrus.Error(err)
+		sentry.CaptureException(err)
+		return
+	}
+	//don't query lnd if there is nothing to query
+	//(first start)
+	if firstInflight.AddIndex == 0 {
+		return
+	}
+	//make LND listpayments request starting from the first payment that we might have missed
+	paymentResponse, err := svc.lnd.ListPayments(ctx, &lnrpc.ListPaymentsRequest{
+		IndexOffset: firstInflight.AddIndex - 1,
+	})
+	//check all payments
 	//call process invoice on all final (succes/error) payments that might be in there
 	//and are not already in the database as final
+	for _, payment := range paymentResponse.Payments {
+		err = svc.ProcessPayment(ctx, payment)
+	}
 }
 
 func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint64) error {

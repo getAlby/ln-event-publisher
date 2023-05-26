@@ -162,3 +162,7 @@ func (wrapper *MockLND) SubscribePayments(ctx context.Context, req *routerrpc.Tr
 func (mlnd *MockLND) DecodeBolt11(ctx context.Context, bolt11 string, options ...grpc.CallOption) (*lnrpc.PayReq, error) {
 	panic("not implemented") // TODO: Implement
 }
+
+func (mlnd *MockLND) ListPayments(ctx context.Context, req *lnrpc.ListPaymentsRequest, options ...grpc.CallOption) (*lnrpc.ListPaymentsResponse, error) {
+	panic("not implemented")
+}

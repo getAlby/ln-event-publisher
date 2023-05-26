@@ -132,3 +132,6 @@ func (wrapper *LNDWrapper) SubscribePayment(ctx context.Context, req *routerrpc.
 func (wrapper *LNDWrapper) SubscribePayments(ctx context.Context, req *routerrpc.TrackPaymentsRequest, options ...grpc.CallOption) (SubscribePaymentWrapper, error) {
 	return wrapper.routerClient.TrackPayments(ctx, req)
 }
+func (wrapper *LNDWrapper) ListPayments(ctx context.Context, req *lnrpc.ListPaymentsRequest, options ...grpc.CallOption) (*lnrpc.ListPaymentsResponse, error) {
+	return wrapper.client.ListPayments(ctx, req)
+}
