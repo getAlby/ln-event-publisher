@@ -94,7 +94,10 @@ func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.
 }
 
 func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint64) error {
-	paymentSub, err := svc.lnd.SubscribePayments(ctx, &routerrpc.TrackPaymentsRequest{})
+	paymentSub, err := svc.lnd.SubscribePayments(ctx, &routerrpc.TrackPaymentsRequest{
+		// we don't need in flight updates
+		NoInflightUpdates: true,
+	})
 	if err != nil {
 		sentry.CaptureException(err)
 		return err
