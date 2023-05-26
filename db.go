@@ -19,7 +19,7 @@ func OpenDB(config *Config) (db *gorm.DB, err error) {
 	sqlDB.SetMaxOpenConns(config.DatabaseMaxConns)
 	sqlDB.SetMaxIdleConns(config.DatabaseMaxIdleConns)
 	sqlDB.SetConnMaxLifetime(time.Duration(config.DatabaseConnMaxLifetime) * time.Second)
-	err = db.AutoMigrate(&Invoice{})
+	err = db.AutoMigrate(&Invoice{}, &Payment{})
 	if err != nil {
 		return nil, err
 	}
@@ -27,6 +27,11 @@ func OpenDB(config *Config) (db *gorm.DB, err error) {
 }
 
 type Invoice struct {
+	gorm.Model
+	AddIndex uint64
+}
+
+type Payment struct {
 	gorm.Model
 	AddIndex uint64
 }

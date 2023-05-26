@@ -30,10 +30,12 @@ type Config struct {
 }
 
 const (
-	LNDInvoiceExchange   = "lnd_invoice"
-	LNDChannelExchange   = "lnd_channel"
-	LNDPaymentExchange   = "lnd_payment"
-	LNDInvoiceRoutingKey = "invoice.incoming.settled"
+	LNDInvoiceExchange          = "lnd_invoice"
+	LNDChannelExchange          = "lnd_channel"
+	LNDPaymentExchange          = "lnd_payment"
+	LNDInvoiceRoutingKey        = "invoice.incoming.settled"
+	LNDPaymentSuccessRoutingKey = "payment.outgoing.settled"
+	LNDPaymentErrorRoutingKey   = "payment.outgoing.error"
 )
 
 type Service struct {
@@ -90,6 +92,12 @@ func (svc *Service) lookupLastAddIndex(exchangeName string, ctx context.Context)
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	return svc.db.WithContext(ctx).Create(&Invoice{
 		AddIndex: invoice.AddIndex,
+	}).Error
+}
+
+func (svc *Service) AddLastPublishedPayment(ctx context.Context, payment *lnrpc.Payment) error {
+	return svc.db.WithContext(ctx).Create(&Payment{
+		AddIndex: payment.PaymentIndex,
 	}).Error
 }
 
@@ -151,10 +159,29 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 }
 
 func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) error {
-	fmt.Println(payment.Status)
-	fmt.Println(payment.PaymentIndex)
-	fmt.Println(payment.ValueSat)
-	fmt.Println("----------")
+	codeMappings := map[lnrpc.Payment_PaymentStatus]string{
+		lnrpc.Payment_FAILED:    LNDPaymentErrorRoutingKey,
+		lnrpc.Payment_SUCCEEDED: LNDPaymentSuccessRoutingKey,
+	}
+	routingKey, ok := codeMappings[payment.Status]
+	if !ok {
+		err := fmt.Errorf("Did not recognize payment status: %v", payment.Status)
+		logrus.WithField("payment", payment).Error(err)
+		sentry.CaptureException(err)
+		//if we get an unknown payment status here something is wrong
+		//log it and capture it, but there is no need to crash I think
+		return nil
+	}
+
+	logrus.Infof("Publishing payment with hash %s", payment.PaymentHash)
+	err := svc.PublishPayload(ctx, payment, svc.cfg.RabbitMQExchangeName, routingKey)
+	if err != nil {
+		return err
+	}
+	//add it to the database if we have one
+	if svc.db != nil {
+		return svc.AddLastPublishedPayment(ctx, payment)
+	}
 	return nil
 }
 
