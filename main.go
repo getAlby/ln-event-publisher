@@ -80,6 +80,8 @@ func main() {
 	} else {
 		logrus.Info("Starting without a PG database")
 	}
-	go logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex))
-	go logrus.Fatal(svc.startPaymentSubscription(ctx, paymentAddIndex))
+
+	//start both subscriptions
+	go func() { logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex)) }()
+	logrus.Fatal(svc.startPaymentSubscription(ctx, paymentAddIndex))
 }

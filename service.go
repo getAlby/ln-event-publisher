@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
@@ -179,6 +180,7 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 	for {
 		select {
 		case <-ctx.Done():
+			fmt.Println("canceled")
 			return context.Canceled
 		default:
 			inv, err := invoiceSub.Recv()
