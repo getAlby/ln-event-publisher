@@ -105,10 +105,15 @@ func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.
 }
 
 func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) error {
-	return svc.db.WithContext(ctx).Create(&Payment{
-		Status:   payment.Status,
+	toUpdate := &Payment{
 		AddIndex: payment.PaymentIndex,
-	}).Error
+	}
+	err := svc.db.FirstOrCreate(&toUpdate).Error
+	if err != nil {
+		return err
+	}
+	toUpdate.Status = payment.Status
+	return svc.db.WithContext(ctx).Save(toUpdate).Error
 }
 
 func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context) {
