@@ -71,7 +71,7 @@ func main() {
 			logrus.Fatal(err)
 		}
 		svc.db = db
-		addIndex, err = svc.lookupLastAddIndex(svc.cfg.RabbitMQExchangeName, ctx)
+		addIndex, paymentAddIndex, err = svc.lookupLastAddIndices(ctx)
 		if err != nil {
 			sentry.CaptureException(err)
 			logrus.Fatal(err)
@@ -80,12 +80,6 @@ func main() {
 	} else {
 		logrus.Info("Starting without a PG database")
 	}
-	switch svc.cfg.RabbitMQExchangeName {
-	case LNDInvoiceExchange:
-		logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex))
-	case LNDPaymentExchange:
-		logrus.Fatal(svc.startPaymentSubscription(ctx, paymentAddIndex))
-	default:
-		logrus.Fatalf("Did not recognize subscription type: %s", svc.cfg.RabbitMQExchangeName)
-	}
+	go logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex))
+	go logrus.Fatal(svc.startPaymentSubscription(ctx, paymentAddIndex))
 }

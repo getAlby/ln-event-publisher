@@ -23,9 +23,8 @@ func TestLNEventPublisher(t *testing.T) {
 		addIndexCounter: 0,
 	}
 	cfg := &Config{
-		DatabaseUri:          os.Getenv("DATABASE_URI"),
-		RabbitMQExchangeName: "lnd_invoice",
-		RabbitMQUri:          os.Getenv("RABBITMQ_URI"),
+		DatabaseUri: os.Getenv("DATABASE_URI"),
+		RabbitMQUri: os.Getenv("RABBITMQ_URI"),
 	}
 	// - init Rabbit
 	svc := &Service{cfg: cfg}
@@ -42,7 +41,7 @@ func TestLNEventPublisher(t *testing.T) {
 		nil,
 	)
 	assert.NoError(t, err)
-	err = svc.rabbitChannel.QueueBind(q.Name, LNDInvoiceRoutingKey, svc.cfg.RabbitMQExchangeName, false, nil)
+	err = svc.rabbitChannel.QueueBind(q.Name, LNDInvoiceRoutingKey, LNDInvoiceExchange, false, nil)
 	assert.NoError(t, err)
 
 	// - init PG
@@ -50,7 +49,7 @@ func TestLNEventPublisher(t *testing.T) {
 	assert.NoError(t, err)
 	svc.db = db
 	svc.lnd = mlnd
-	addIndex, err := svc.lookupLastAddIndex(LNDInvoiceExchange, context.Background())
+	addIndex, _, err := svc.lookupLastAddIndices(context.Background())
 	assert.NoError(t, err)
 	//the first time, add index should be 0
 	assert.Equal(t, uint64(0), addIndex)
@@ -66,7 +65,7 @@ func TestLNEventPublisher(t *testing.T) {
 	//wait a bit for update to happen
 	time.Sleep(100 * time.Millisecond)
 	// - check if add index is saved correctly
-	newAddIndex, err := svc.lookupLastAddIndex(LNDInvoiceExchange, context.Background())
+	newAddIndex, _, err := svc.lookupLastAddIndices(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, addIndex+1, newAddIndex)
 

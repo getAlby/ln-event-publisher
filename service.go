@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
@@ -29,7 +28,6 @@ type Config struct {
 	DatabaseMaxConns        int    `envconfig:"DATABASE_MAX_CONNS" default:"10"`
 	DatabaseMaxIdleConns    int    `envconfig:"DATABASE_MAX_IDLE_CONNS" default:"5"`
 	DatabaseConnMaxLifetime int    `envconfig:"DATABASE_CONN_MAX_LIFETIME" default:"1800"` // 30 minutes
-	RabbitMQExchangeName    string `envconfig:"RABBITMQ_EXCHANGE_NAME" default:"lnd_invoice"`
 	RabbitMQUri             string `envconfig:"RABBITMQ_URI"`
 	SentryDSN               string `envconfig:"SENTRY_DSN"`
 }
@@ -61,7 +59,20 @@ func (svc *Service) InitRabbitMq() (err error) {
 	}
 	err = ch.ExchangeDeclare(
 		//TODO: review exchange config
-		svc.cfg.RabbitMQExchangeName,
+		LNDPaymentExchange,
+		"topic", // type
+		true,    // durable
+		false,   // auto-deleted
+		false,   // internal
+		false,   // no-wait
+		nil,     // arguments
+	)
+	if err != nil {
+		return err
+	}
+	err = ch.ExchangeDeclare(
+		//TODO: review exchange config
+		LNDInvoiceExchange,
 		"topic", // type
 		true,    // durable
 		false,   // auto-deleted
@@ -75,23 +86,15 @@ func (svc *Service) InitRabbitMq() (err error) {
 	svc.rabbitChannel = ch
 	return
 }
-func (svc *Service) lookupLastAddIndex(exchangeName string, ctx context.Context) (result uint64, err error) {
-	switch exchangeName {
-	case LNDInvoiceExchange:
-		//get last item from db
-		inv := &Invoice{}
-		tx := svc.db.WithContext(ctx).Last(inv)
-		if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
-			return 0, tx.Error
-		}
-		//return addIndex
-		return inv.AddIndex, nil
-	case LNDPaymentExchange:
-		//todo
-		return 0, nil
-	default:
-		return 0, fmt.Errorf("Unrecognized exchange name %s", exchangeName)
+func (svc *Service) lookupLastAddIndices(ctx context.Context) (invoiceIndex, paymentIndex uint64, err error) {
+	//get last item from db
+	inv := &Invoice{}
+	tx := svc.db.WithContext(ctx).Last(inv)
+	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
+		return 0, 0, tx.Error
 	}
+	//todo: payment add index
+	return inv.AddIndex, 0, nil
 }
 
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
@@ -142,7 +145,8 @@ func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint6
 		return err
 	}
 	//check LND for payments we might have missed while offline
-	go svc.CheckPaymentsSinceLastIndex(ctx)
+	//todo
+	//go svc.CheckPaymentsSinceLastIndex(ctx)
 	logrus.Infof("Starting payment subscription from index %d", addIndex)
 	for {
 		select {
@@ -196,7 +200,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 	if ok {
 		//only publish if non-pending
 		logrus.Infof("Publishing payment with hash %s", payment.PaymentHash)
-		err := svc.PublishPayload(ctx, payment, svc.cfg.RabbitMQExchangeName, routingKey)
+		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
 			return err
 		}
@@ -211,7 +215,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	if invoice.State == lnrpc.Invoice_SETTLED {
 		logrus.Infof("Publishing invoice with hash %s", hex.EncodeToString(invoice.RHash))
-		err := svc.PublishPayload(ctx, invoice, svc.cfg.RabbitMQExchangeName, LNDInvoiceRoutingKey)
+		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 		if err != nil {
 			return err
 		}
