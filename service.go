@@ -104,16 +104,24 @@ func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.
 	}).Error
 }
 
-func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) error {
+func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (alreadyProcessed bool, err error) {
 	toUpdate := &Payment{
-		AddIndex: payment.PaymentIndex,
+		Model: gorm.Model{
+			ID: uint(payment.PaymentIndex),
+		},
 	}
-	err := svc.db.FirstOrCreate(&toUpdate).Error
+	err = svc.db.FirstOrCreate(&toUpdate).Error
 	if err != nil {
-		return err
+		return false, err
 	}
+	//no need to update, we already processed this payment
+	if toUpdate.Status == payment.Status {
+		return true, nil
+	}
+	//we didn't know about the last status of this payment
+	//so we didn't process it yet (it was stored in the db as in flight)
 	toUpdate.Status = payment.Status
-	return svc.db.WithContext(ctx).Save(toUpdate).Error
+	return false, svc.db.WithContext(ctx).Save(toUpdate).Error
 }
 
 func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context) {
@@ -129,16 +137,17 @@ func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context) {
 	}
 	//don't query lnd if there is nothing to query
 	//(first start)
-	if firstInflight.AddIndex == 0 {
+	if firstInflight.ID == 0 {
 		return
 	}
 	//make LND listpayments request starting from the first payment that we might have missed
 	paymentResponse, err := svc.lnd.ListPayments(ctx, &lnrpc.ListPaymentsRequest{
-		IndexOffset: firstInflight.AddIndex - 1,
+		IndexOffset: uint64(firstInflight.ID - 1),
 	})
 	//check all payments
-	//call process invoice on all final (succes/error) payments that might be in there
-	//and are not already in the database as final
+	//call process invoice on all of these
+	//this call is idempotent: if we already had them in the database
+	//in their current state, we won't republish them.
 	for _, payment := range paymentResponse.Payments {
 		err = svc.ProcessPayment(ctx, payment)
 	}
@@ -151,8 +160,7 @@ func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint6
 		return err
 	}
 	//check LND for payments we might have missed while offline
-	//todo
-	//go svc.CheckPaymentsSinceLastIndex(ctx)
+	go svc.CheckPaymentsSinceLastIndex(ctx)
 	logrus.Infof("Starting payment subscription from index %d", addIndex)
 	for {
 		select {
@@ -203,18 +211,21 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 }
 
 func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) error {
-	routingKey, ok := codeMappings[payment.Status]
-	if ok {
+	alreadyPublished, err := svc.StorePayment(ctx, payment)
+	if err != nil {
+		return err
+	}
+	routingKey, notInflight := codeMappings[payment.Status]
+	//if the payment was in the database as final then we already published it
+	//and we only publish completed payments
+	if notInflight && !alreadyPublished {
 		//only publish if non-pending
 		logrus.Infof("Publishing payment with hash %s", payment.PaymentHash)
 		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
+			//todo: rollback storepayment db transaction
 			return err
 		}
-	}
-	//always add it to the database if we have one
-	if svc.db != nil {
-		return svc.StorePayment(ctx, payment)
 	}
 	return nil
 }
