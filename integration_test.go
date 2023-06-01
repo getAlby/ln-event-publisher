@@ -140,6 +140,18 @@ func TestPaymentPublish(t *testing.T) {
 	svc.db.Exec("delete from payments;")
 }
 
+// payment tests: todo
+// extract listen to rabbitmq method to include timeout so we can test non-arrival of certain events
+// test a 2nd payload with the same status does not get published
+// test that an inflight update does not get published
+// test that a succes update of an existing inflight does get published
+// test that an err update does gets published
+// implement lookupinvoice method with inject channels to inject payments to respond
+// test restart:
+//   - add some inflights and a succes
+//   - stop service
+//   - inject payments (inflight-> success and new success/fail)
+//   - start service again, test that all new updates are being published, but not the existing success
 type MockLND struct {
 	Sub                 *MockSubscribeInvoices
 	PaymentSub          *MockSubscribePayments
