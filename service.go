@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
@@ -129,8 +128,6 @@ func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (a
 	}
 	//no need to update, we already processed this payment
 	if toUpdate.Status == payment.Status {
-		fmt.Println(payment)
-		fmt.Println(toUpdate)
 		return true, nil
 	}
 	//we didn't know about the last status of this payment
@@ -213,7 +210,6 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint6
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("canceled")
 			return context.Canceled
 		default:
 			inv, err := invoiceSub.Recv()
@@ -236,11 +232,10 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 		return err
 	}
 	routingKey, notInflight := codeMappings[payment.Status]
-	fmt.Println(routingKey, notInflight, alreadyPublished)
 	//if the payment was in the database as final then we already published it
 	//and we only publish completed payments
 	if notInflight && !alreadyPublished {
-		logrus.Infof("Publishing payment with hash %s", payment.PaymentHash)
+		logrus.Infof("Publishing payment status %v hash %s", payment.Status, payment.PaymentHash)
 		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
 			//todo: rollback storepayment db transaction

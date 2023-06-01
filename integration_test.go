@@ -24,8 +24,7 @@ func createTestService(t *testing.T, cfg *Config, exchange, routingKey string) (
 		PaymentSub: &MockSubscribePayments{
 			paymentChan: make(chan *lnrpc.Payment),
 		},
-		addIndexCounter:     0,
-		paymentIndexCounter: 0,
+		addIndexCounter: 0,
 	}
 	// - init Rabbit
 	err := svc.InitRabbitMq()
@@ -110,7 +109,8 @@ func TestPaymentPublish(t *testing.T) {
 		DatabaseUri: os.Getenv("DATABASE_URI"),
 		RabbitMQUri: os.Getenv("RABBITMQ_URI"),
 	}
-	svc, mlnd, m := createTestService(t, cfg, LNDPaymentExchange, LNDPaymentSuccessRoutingKey)
+	svc, mlnd, m := createTestService(t, cfg, LNDPaymentExchange, "payment.outgoing.*")
+	defer svc.db.Exec("delete from payments;")
 	_, paymentIndex, err := svc.lookupLastAddIndices(context.Background())
 	assert.NoError(t, err)
 	//the first time, add index should be 0
@@ -121,31 +121,53 @@ func TestPaymentPublish(t *testing.T) {
 		assert.EqualError(t, err, context.Canceled.Error())
 	}()
 	// - mock outgoing payment
-	// the new payment that will be saved will have addIndex + 1
-	mlnd.mockPayment(lnrpc.Payment_SUCCEEDED)
-	assert.NoError(t, err)
-	//wait a bit for update to happen
-	time.Sleep(100 * time.Millisecond)
-
-	msg := <-m
-	var receivedPayment lnrpc.Payment
-	r := bytes.NewReader(msg.Body)
-	err = json.NewDecoder(r).Decode(&receivedPayment)
-	assert.NoError(t, err)
+	index := uint64(1)
+	//check that it gets published
+	mlnd.mockPayment(lnrpc.Payment_SUCCEEDED, index)
+	timedOut, receivedPayment := timeoutOrNewPaymentFromRabbit(t, m)
+	assert.False(t, timedOut)
 	assert.Equal(t, lnrpc.Payment_SUCCEEDED, receivedPayment.Status)
+
+	//mock the same payment again
+	mlnd.mockPayment(lnrpc.Payment_SUCCEEDED, index)
+	timedOut, receivedPayment = timeoutOrNewPaymentFromRabbit(t, m)
+	//should not get published
+	assert.True(t, timedOut)
+	// mock an in-flight payment
+	index += 1
+	mlnd.mockPayment(lnrpc.Payment_IN_FLIGHT, index)
+	timedOut, receivedPayment = timeoutOrNewPaymentFromRabbit(t, m)
+	// should not get published
+	assert.True(t, timedOut)
+
+	//but now we get a failure for this in flight, it should get published
+
+	mlnd.mockPayment(lnrpc.Payment_FAILED, index)
+	timedOut, receivedPayment = timeoutOrNewPaymentFromRabbit(t, m)
+	// should get published
+	assert.False(t, timedOut)
+	assert.Equal(t, index, receivedPayment.PaymentIndex)
+	assert.Equal(t, lnrpc.Payment_FAILED, receivedPayment.Status)
 	//stop service
 	cancel()
 	svc.rabbitChannel.Close()
 	// - clean up database
-	svc.db.Exec("delete from payments;")
+}
+
+func timeoutOrNewPaymentFromRabbit(t *testing.T, m <-chan amqp091.Delivery) (timeout bool, payment *lnrpc.Payment) {
+	select {
+	case msg := <-m:
+		var receivedPayment lnrpc.Payment
+		r := bytes.NewReader(msg.Body)
+		err := json.NewDecoder(r).Decode(&receivedPayment)
+		assert.NoError(t, err)
+		return false, &receivedPayment
+	case <-time.After(1000 * time.Millisecond):
+		return true, nil
+	}
 }
 
 // payment tests: todo
-// extract listen to rabbitmq method to include timeout so we can test non-arrival of certain events
-// test a 2nd payload with the same status does not get published
-// test that an inflight update does not get published
-// test that a succes update of an existing inflight does get published
-// test that an err update does gets published
 // implement lookupinvoice method with inject channels to inject payments to respond
 // test restart:
 //   - add some inflights and a succes
@@ -153,10 +175,9 @@ func TestPaymentPublish(t *testing.T) {
 //   - inject payments (inflight-> success and new success/fail)
 //   - start service again, test that all new updates are being published, but not the existing success
 type MockLND struct {
-	Sub                 *MockSubscribeInvoices
-	PaymentSub          *MockSubscribePayments
-	addIndexCounter     uint64
-	paymentIndexCounter uint64
+	Sub             *MockSubscribeInvoices
+	PaymentSub      *MockSubscribePayments
+	addIndexCounter uint64
 }
 type MockSubscribeInvoices struct {
 	invoiceChan chan (*lnrpc.Invoice)
@@ -186,10 +207,11 @@ func (mlnd *MockLND) SubscribeInvoices(ctx context.Context, req *lnrpc.InvoiceSu
 	return mlnd.Sub, nil
 }
 
-func (mlnd *MockLND) mockPayment(status lnrpc.Payment_PaymentStatus) {
-	mlnd.paymentIndexCounter += 1
+func (mlnd *MockLND) mockPayment(status lnrpc.Payment_PaymentStatus, index uint64) {
+	//use time as hash
+	hash := time.Now().String()
 	mlnd.PaymentSub.paymentChan <- &lnrpc.Payment{
-		PaymentHash:     "",
+		PaymentHash:     hash,
 		Value:           0,
 		CreationDate:    0,
 		Fee:             0,
@@ -202,7 +224,7 @@ func (mlnd *MockLND) mockPayment(status lnrpc.Payment_PaymentStatus) {
 		FeeMsat:         0,
 		CreationTimeNs:  0,
 		Htlcs:           []*lnrpc.HTLCAttempt{},
-		PaymentIndex:    mlnd.paymentIndexCounter,
+		PaymentIndex:    index,
 		FailureReason:   0,
 	}
 }
