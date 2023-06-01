@@ -29,7 +29,7 @@ type Config struct {
 	DatabaseMaxConns        int    `envconfig:"DATABASE_MAX_CONNS" default:"10"`
 	DatabaseMaxIdleConns    int    `envconfig:"DATABASE_MAX_IDLE_CONNS" default:"5"`
 	DatabaseConnMaxLifetime int    `envconfig:"DATABASE_CONN_MAX_LIFETIME" default:"1800"` // 30 minutes
-	RabbitMQUri             string `envconfig:"RABBITMQ_URI"`
+	RabbitMQUri             string `envconfig:"RABBITMQ_URI" required:"true"`
 	SentryDSN               string `envconfig:"SENTRY_DSN"`
 }
 
@@ -88,14 +88,27 @@ func (svc *Service) InitRabbitMq() (err error) {
 	return
 }
 func (svc *Service) lookupLastAddIndices(ctx context.Context) (invoiceIndex, paymentIndex uint64, err error) {
-	//get last item from db
+	//get last invoice from db
 	inv := &Invoice{}
 	tx := svc.db.WithContext(ctx).Last(inv)
 	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
 		return 0, 0, tx.Error
 	}
-	//todo: payment add index
-	return inv.AddIndex, 0, nil
+	//get earliest non-final payment in db
+	firstInflight := &Payment{}
+	err = svc.db.Where(&Payment{
+		Status: lnrpc.Payment_IN_FLIGHT,
+	}).First(firstInflight).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			//first start, nothing found
+			return inv.AddIndex, 0, nil
+		}
+		logrus.Error(err)
+		sentry.CaptureException(err)
+		return
+	}
+	return inv.AddIndex, uint64(firstInflight.ID), nil
 }
 
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
@@ -116,41 +129,40 @@ func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (a
 	}
 	//no need to update, we already processed this payment
 	if toUpdate.Status == payment.Status {
+		fmt.Println(payment)
+		fmt.Println(toUpdate)
 		return true, nil
 	}
 	//we didn't know about the last status of this payment
-	//so we didn't process it yet (it was stored in the db as in flight)
+	//so we didn't process it yet
 	toUpdate.Status = payment.Status
 	return false, svc.db.WithContext(ctx).Save(toUpdate).Error
 }
 
-func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context) {
-	//look up index of earliest non-final payment in db
-	firstInflight := &Payment{}
-	err := svc.db.Where(&Payment{
-		Status: lnrpc.Payment_IN_FLIGHT,
-	}).First(firstInflight).Error
-	if err != nil {
-		logrus.Error(err)
-		sentry.CaptureException(err)
-		return
-	}
-	//don't query lnd if there is nothing to query
-	//(first start)
-	if firstInflight.ID == 0 {
-		return
+func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context, index uint64) error {
+
+	if index == 0 {
+		//no need to check anything
+		return nil
 	}
 	//make LND listpayments request starting from the first payment that we might have missed
 	paymentResponse, err := svc.lnd.ListPayments(ctx, &lnrpc.ListPaymentsRequest{
-		IndexOffset: uint64(firstInflight.ID - 1),
+		IndexOffset: index,
 	})
-	//check all payments
+	if err != nil {
+		return err
+	}
+
 	//call process invoice on all of these
 	//this call is idempotent: if we already had them in the database
 	//in their current state, we won't republish them.
 	for _, payment := range paymentResponse.Payments {
 		err = svc.ProcessPayment(ctx, payment)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint64) error {
@@ -160,7 +172,15 @@ func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint6
 		return err
 	}
 	//check LND for payments we might have missed while offline
-	go svc.CheckPaymentsSinceLastIndex(ctx)
+	//do this in a goroutine so we don't miss any new payments
+	//(though it's possible that we publish duplicates)
+	go func() {
+		err = svc.CheckPaymentsSinceLastIndex(ctx, addIndex)
+		if err != nil {
+			logrus.Error(err)
+			sentry.CaptureException(err)
+		}
+	}()
 	logrus.Infof("Starting payment subscription from index %d", addIndex)
 	for {
 		select {
@@ -216,10 +236,10 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 		return err
 	}
 	routingKey, notInflight := codeMappings[payment.Status]
+	fmt.Println(routingKey, notInflight, alreadyPublished)
 	//if the payment was in the database as final then we already published it
 	//and we only publish completed payments
 	if notInflight && !alreadyPublished {
-		//only publish if non-pending
 		logrus.Infof("Publishing payment with hash %s", payment.PaymentHash)
 		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
