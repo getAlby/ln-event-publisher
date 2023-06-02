@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/getAlby/lndhub.go/lnd"
+	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -62,6 +62,7 @@ func main() {
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
 	addIndex := uint64(0)
+	paymentAddIndex := uint64(0)
 	if svc.cfg.DatabaseUri != "" {
 		logrus.Info("Opening PG database")
 		db, err := OpenDB(svc.cfg)
@@ -70,7 +71,7 @@ func main() {
 			logrus.Fatal(err)
 		}
 		svc.db = db
-		addIndex, err = svc.lookupLastAddIndex(ctx)
+		addIndex, paymentAddIndex, err = svc.lookupLastAddIndices(ctx)
 		if err != nil {
 			sentry.CaptureException(err)
 			logrus.Fatal(err)
@@ -79,10 +80,8 @@ func main() {
 	} else {
 		logrus.Info("Starting without a PG database")
 	}
-	switch svc.cfg.RabbitMQExchangeName {
-	case LNDInvoiceExchange:
-		logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex))
-	default:
-		logrus.Fatalf("Did not recognize subscription type: %s", svc.cfg.RabbitMQExchangeName)
-	}
+
+	//start both subscriptions
+	go func() { logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex)) }()
+	logrus.Fatal(svc.startPaymentSubscription(ctx, paymentAddIndex))
 }
