@@ -94,20 +94,37 @@ func (svc *Service) lookupLastAddIndices(ctx context.Context) (invoiceIndex, pay
 		return 0, 0, tx.Error
 	}
 	//get earliest non-final payment in db
-	firstInflight := &Payment{}
+	//or the last completed payment
+	firstInflightOrLastCompleted := &Payment{}
 	err = svc.db.Where(&Payment{
 		Status: lnrpc.Payment_IN_FLIGHT,
-	}).First(firstInflight).Error
+	}).First(firstInflightOrLastCompleted).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			//first start, nothing found
-			return inv.AddIndex, 0, nil
+			//look up last completed payment that we have instead
+			//and use that one.
+			err = svc.db.WithContext(ctx).Last(firstInflightOrLastCompleted).Error
+			if err != nil {
+				if err == gorm.ErrRecordNotFound {
+					//if we get here there are no payment in the db:
+					//first start, nothing found
+					return inv.AddIndex, 0, nil
+				}
+				//real db error
+				return 0, 0, err
+			}
+			// in this case we don't need to do -1
+			//because we have already processsed this invoice
+			return inv.AddIndex, uint64(firstInflightOrLastCompleted.ID), nil
 		}
 		logrus.Error(err)
 		sentry.CaptureException(err)
 		return
 	}
-	return inv.AddIndex, uint64(firstInflight.ID), nil
+	// in this case we need to subtract 1 from the payment index
+	// because we do want an update about the in-flight payment
+	// that we found
+	return inv.AddIndex, uint64(firstInflightOrLastCompleted.ID - 1), nil
 }
 
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
