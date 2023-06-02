@@ -138,6 +138,7 @@ func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (a
 		Model: gorm.Model{
 			ID: uint(payment.PaymentIndex),
 		},
+		PaymentHash: payment.PaymentHash,
 	}
 	err = svc.db.FirstOrCreate(&toUpdate).Error
 	if err != nil {
