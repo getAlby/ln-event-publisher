@@ -148,11 +148,6 @@ func TestPaymentPublish(t *testing.T) {
 	assert.Equal(t, index, receivedPayment.PaymentIndex)
 	assert.Equal(t, lnrpc.Payment_FAILED, receivedPayment.Status)
 	// test restart:
-	//stop service
-	//give it some time
-	cancel()
-	time.Sleep(10 * time.Millisecond)
-
 	//   - add some inflights and a succes
 	mlnd.mockPayment(lnrpc.Payment_IN_FLIGHT, uint64(100), "inflight_1")
 	mlnd.mockPayment(lnrpc.Payment_SUCCEEDED, uint64(101), "success_1")
@@ -162,6 +157,11 @@ func TestPaymentPublish(t *testing.T) {
 	timedOut, receivedPayment = timeoutOrNewPaymentFromRabbit(t, m)
 	//should time out now, queue empty
 	assert.True(t, timedOut)
+	//stop service
+	//give it some time
+	cancel()
+	time.Sleep(10 * time.Millisecond)
+
 	//   - inject payments (inflight-> success and new success/fail)
 	mlnd.ListPaymentsResponse = []*lnrpc.Payment{
 		{
@@ -182,6 +182,9 @@ func TestPaymentPublish(t *testing.T) {
 	}
 	//   - start service again,
 	ctx, cancel2 := context.WithCancel(context.Background())
+	//look up payment index
+	_, paymentIndex, err = svc.lookupLastAddIndices(context.Background())
+	assert.NoError(t, err)
 	go func() {
 		err = svc.startPaymentSubscription(ctx, paymentIndex)
 		assert.EqualError(t, err, context.Canceled.Error())
@@ -197,6 +200,7 @@ func TestPaymentPublish(t *testing.T) {
 	assert.Equal(t, "inflight_2", receivedPayment.PaymentHash)
 	assert.Equal(t, lnrpc.Payment_FAILED, receivedPayment.Status)
 	//should time out now, queue empty
+	timedOut, receivedPayment = timeoutOrNewPaymentFromRabbit(t, m)
 	assert.True(t, timedOut)
 	cancel2()
 	svc.rabbitChannel.Close()
