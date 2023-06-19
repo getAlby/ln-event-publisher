@@ -158,10 +158,7 @@ func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context, index uint6
 
 	logrus.Infof("Checking payments since last index: %d", index)
 
-	//todo: remove short circuit
-	//this is currently too dangerous as an add_index too far in the past
-	//can kill LND
-	if index == 0 || true {
+	if index == 0 {
 		//no need to check anything
 		return nil
 	}
