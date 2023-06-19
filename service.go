@@ -170,7 +170,10 @@ func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context, index uint6
 		return err
 	}
 
-	logrus.Infof("Found %d payments since first index", len(paymentResponse.Payments))
+	logrus.Infof("Found %d payments since first index. First index offset %d, last index offset %d",
+		len(paymentResponse.Payments),
+		paymentResponse.FirstIndexOffset,
+		paymentResponse.LastIndexOffset)
 	//call process invoice on all of these
 	//this call is idempotent: if we already had them in the database
 	//in their current state, we won't republish them.
