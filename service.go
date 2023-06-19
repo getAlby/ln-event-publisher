@@ -156,11 +156,15 @@ func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (a
 
 func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context, index uint64) error {
 
-	if index == 0 {
+	logrus.Infof("Checking payments since last index: %d", index)
+
+	//todo: remove short circuit
+	//this is currently too dangerous as an add_index too far in the past
+	//can kill LND
+	if index == 0 || true {
 		//no need to check anything
 		return nil
 	}
-	logrus.Infof("Checking payments since last index: %d", index)
 	//make LND listpayments request starting from the first payment that we might have missed
 	paymentResponse, err := svc.lnd.ListPayments(ctx, &lnrpc.ListPaymentsRequest{
 		IndexOffset: index,
@@ -169,7 +173,7 @@ func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context, index uint6
 		return err
 	}
 
-	logrus.Infof("Found %d payments since last index", len(paymentResponse.Payments))
+	logrus.Infof("Found %d payments since first index", len(paymentResponse.Payments))
 	//call process invoice on all of these
 	//this call is idempotent: if we already had them in the database
 	//in their current state, we won't republish them.
