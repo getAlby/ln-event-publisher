@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"time"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
@@ -94,11 +95,13 @@ func (svc *Service) lookupLastAddIndices(ctx context.Context) (invoiceIndex, pay
 		return 0, 0, tx.Error
 	}
 	//get earliest non-final payment in db
+	//that is not older than 24h (to avoid putting too much stress on LND)
+	//so we assume that we are never online for longer than 24h
 	//or the last completed payment
 	firstInflightOrLastCompleted := &Payment{}
 	err = svc.db.Where(&Payment{
 		Status: lnrpc.Payment_IN_FLIGHT,
-	}).First(firstInflightOrLastCompleted).Error
+	}).Where("created_at > ?", time.Now().Add(-24*time.Hour)).First(firstInflightOrLastCompleted).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			//look up last completed payment that we have instead
