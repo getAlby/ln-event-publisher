@@ -34,6 +34,7 @@ type Invoice struct {
 
 type Payment struct {
 	gorm.Model
-	PaymentHash string
-	Status      lnrpc.Payment_PaymentStatus
+	PaymentHash    string
+	CreationTimeNs int64
+	Status         lnrpc.Payment_PaymentStatus
 }

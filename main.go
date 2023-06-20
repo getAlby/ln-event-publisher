@@ -49,9 +49,16 @@ func main() {
 		logrus.Fatal(err)
 	}
 	logrus.Infof("Connected to LND: %s - %s", resp.Alias, resp.IdentityPubkey)
+	logrus.Info("Opening PG database")
+	db, err := OpenDB(c)
+	if err != nil {
+		sentry.CaptureException(err)
+		logrus.Fatal(err)
+	}
 	svc := &Service{
 		cfg: c,
 		lnd: client,
+		db:  db,
 	}
 	err = svc.InitRabbitMq()
 	if err != nil {
@@ -61,23 +68,7 @@ func main() {
 	backgroundCtx := context.Background()
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
-	addIndex := uint64(0)
-	paymentAddIndex := uint64(0)
-	logrus.Info("Opening PG database")
-	db, err := OpenDB(svc.cfg)
-	if err != nil {
-		sentry.CaptureException(err)
-		logrus.Fatal(err)
-	}
-	svc.db = db
-	addIndex, paymentAddIndex, err = svc.lookupLastAddIndices(ctx)
-	if err != nil {
-		sentry.CaptureException(err)
-		logrus.Fatal(err)
-	}
-	logrus.Infof("Found last indices: invoice %d, payment %d", addIndex, paymentAddIndex)
-
 	//start both subscriptions
-	go func() { logrus.Fatal(svc.startInvoiceSubscription(ctx, addIndex)) }()
-	logrus.Fatal(svc.startPaymentSubscription(ctx, paymentAddIndex))
+	go func() { logrus.Fatal(svc.startInvoiceSubscription(ctx)) }()
+	logrus.Fatal(svc.startPaymentSubscription(ctx))
 }

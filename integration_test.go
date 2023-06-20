@@ -69,26 +69,17 @@ func TestInvoicePublish(t *testing.T) {
 		RabbitMQUri: os.Getenv("RABBITMQ_URI"),
 	}
 	svc, mlnd, m := createTestService(t, cfg, LNDInvoiceExchange, LNDInvoiceRoutingKey)
-	addIndex, _, err := svc.lookupLastAddIndices(context.Background())
-	assert.NoError(t, err)
-	//the first time, add index should be 0
-	assert.Equal(t, uint64(0), addIndex)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		err = svc.startInvoiceSubscription(ctx, addIndex)
+		err := svc.startInvoiceSubscription(ctx)
 		assert.EqualError(t, err, context.Canceled.Error())
 	}()
 	// - mock incoming invoice
 	// the new invoice that will be saved will have addIndex + 1
-	err = mlnd.mockPaidInvoice(100, "integration test")
+	err := mlnd.mockPaidInvoice(100, "integration test")
 	assert.NoError(t, err)
 	//wait a bit for update to happen
 	time.Sleep(100 * time.Millisecond)
-	// - check if add index is saved correctly
-	newAddIndex, _, err := svc.lookupLastAddIndices(context.Background())
-	assert.NoError(t, err)
-	assert.Equal(t, addIndex+1, newAddIndex)
-
 	assert.NoError(t, err)
 	msg := <-m
 	var receivedInvoice lnrpc.Invoice
@@ -111,13 +102,9 @@ func TestPaymentPublish(t *testing.T) {
 	}
 	svc, mlnd, m := createTestService(t, cfg, LNDPaymentExchange, "payment.outgoing.*")
 	defer svc.db.Exec("delete from payments;")
-	_, paymentIndex, err := svc.lookupLastAddIndices(context.Background())
-	assert.NoError(t, err)
-	//the first time, add index should be 0
-	assert.Equal(t, uint64(0), paymentIndex)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		err = svc.startPaymentSubscription(ctx, paymentIndex)
+		err := svc.startPaymentSubscription(ctx)
 		assert.EqualError(t, err, context.Canceled.Error())
 	}()
 	// - mock outgoing payment
@@ -182,11 +169,8 @@ func TestPaymentPublish(t *testing.T) {
 	}
 	//   - start service again,
 	ctx, cancel2 := context.WithCancel(context.Background())
-	//look up payment index
-	_, paymentIndex, err = svc.lookupLastAddIndices(context.Background())
-	assert.NoError(t, err)
 	go func() {
-		err = svc.startPaymentSubscription(ctx, paymentIndex)
+		err := svc.startPaymentSubscription(ctx)
 		assert.EqualError(t, err, context.Canceled.Error())
 	}()
 	// test that all new updates are being published

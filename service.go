@@ -87,14 +87,19 @@ func (svc *Service) InitRabbitMq() (err error) {
 	svc.rabbitChannel = ch
 	return
 }
-func (svc *Service) lookupLastAddIndices(ctx context.Context) (invoiceIndex, paymentIndex uint64, err error) {
+
+func (svc *Service) lookupLastInvoiceIndex(ctx context.Context) (index uint64, err error) {
 	//get last invoice from db
 	inv := &Invoice{}
 	tx := svc.db.WithContext(ctx).Last(inv)
 	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
-		return 0, 0, tx.Error
+		return 0, tx.Error
 	}
-	//get earliest non-final payment in db
+	return inv.AddIndex, nil
+}
+
+func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPaymentCreationTimeUnix int64, err error) {
+	//get the creation time in unix seconds of the earliest non-final payment in db
 	//that is not older than 24h (to avoid putting too much stress on LND)
 	//so we assume that we are never online for longer than 24h
 	//in case there are no non-final payments in the db, we get the last completed payment
@@ -111,23 +116,22 @@ func (svc *Service) lookupLastAddIndices(ctx context.Context) (invoiceIndex, pay
 				if err == gorm.ErrRecordNotFound {
 					//if we get here there are no payment in the db:
 					//first start, nothing found
-					return inv.AddIndex, 0, nil
+					return 0, nil
 				}
 				//real db error
-				return 0, 0, err
+				return 0, err
 			}
 			// in this case we don't need to do -1
 			//because we have already processsed this invoice
-			return inv.AddIndex, uint64(firstInflightOrLastCompleted.ID), nil
+			return firstInflightOrLastCompleted.CreationTimeNs / 1e9, nil
 		}
 		logrus.Error(err)
 		sentry.CaptureException(err)
 		return
 	}
-	// in this case we need to subtract 1 from the payment index
-	// because we do want an update about the in-flight payment
-	// that we found
-	return inv.AddIndex, uint64(firstInflightOrLastCompleted.ID - 1), nil
+	//we want an update on this invoice
+	//so we subtract another second
+	return (firstInflightOrLastCompleted.CreationTimeNs / 1e9) - 1, nil
 }
 
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
@@ -141,7 +145,8 @@ func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (a
 		Model: gorm.Model{
 			ID: uint(payment.PaymentIndex),
 		},
-		PaymentHash: payment.PaymentHash,
+		CreationTimeNs: payment.CreationTimeNs,
+		PaymentHash:    payment.PaymentHash,
 	}
 	err = svc.db.FirstOrCreate(&toUpdate).Error
 	if err != nil {
@@ -157,19 +162,23 @@ func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (a
 	return false, svc.db.WithContext(ctx).Save(toUpdate).Error
 }
 
-func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context, index uint64) error {
+func (svc *Service) CheckPaymentsSinceLast(ctx context.Context) error {
 
-	logrus.Infof("Checking payments since last index: %d", index)
+	ts, err := svc.lookupLastPaymentTimestamp(ctx)
+	if err != nil {
+		return err
+	}
 
-	if index == 0 {
+	logrus.Infof("Checking payments since last timestamp: %d", ts)
+	if ts == 0 {
 		//no need to check anything
 		return nil
 	}
 	//make LND listpayments request starting from the first payment that we might have missed
 	paymentResponse, err := svc.lnd.ListPayments(ctx, &lnrpc.ListPaymentsRequest{
-		IndexOffset: index,
 		//apparently LL considers a failed payment to be "incomplete"
 		IncludeIncomplete: true,
+		CreationDateStart: uint64(ts),
 	})
 	if err != nil {
 		return err
@@ -192,7 +201,7 @@ func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context, index uint6
 	return nil
 }
 
-func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint64) error {
+func (svc *Service) startPaymentSubscription(ctx context.Context) error {
 	paymentSub, err := svc.lnd.SubscribePayments(ctx, &routerrpc.TrackPaymentsRequest{})
 	if err != nil {
 		sentry.CaptureException(err)
@@ -202,13 +211,12 @@ func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint6
 	//do this in a goroutine so we don't miss any new payments
 	//(though it's possible that we publish duplicates)
 	go func() {
-		err = svc.CheckPaymentsSinceLastIndex(ctx, addIndex)
+		err = svc.CheckPaymentsSinceLast(ctx)
 		if err != nil {
 			logrus.Error(err)
 			sentry.CaptureException(err)
 		}
 	}()
-	logrus.Infof("Starting payment subscription from index %d", addIndex)
 	for {
 		select {
 		case <-ctx.Done():
@@ -228,7 +236,11 @@ func (svc *Service) startPaymentSubscription(ctx context.Context, addIndex uint6
 	}
 }
 
-func (svc *Service) startInvoiceSubscription(ctx context.Context, addIndex uint64) error {
+func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
+	addIndex, err := svc.lookupLastInvoiceIndex(ctx)
+	if err != nil {
+		return err
+	}
 	invoiceSub, err := svc.lnd.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{
 		AddIndex: addIndex,
 	})
