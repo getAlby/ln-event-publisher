@@ -165,6 +165,8 @@ func (svc *Service) CheckPaymentsSinceLastIndex(ctx context.Context, index uint6
 	//make LND listpayments request starting from the first payment that we might have missed
 	paymentResponse, err := svc.lnd.ListPayments(ctx, &lnrpc.ListPaymentsRequest{
 		IndexOffset: index,
+		//apparently LL considers a failed payment to be "incomplete"
+		IncludeIncomplete: true,
 	})
 	if err != nil {
 		return err
