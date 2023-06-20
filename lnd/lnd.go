@@ -35,6 +35,10 @@ type LNDWrapper struct {
 	routerClient routerrpc.RouterClient
 }
 
+const (
+	GRPC_MAX_BYTES = 1e8
+)
+
 func NewLNDclient(lndOptions LNDoptions) (result *LNDWrapper, err error) {
 	// Get credentials either from a hex string, a file or the system's certificate store
 	var creds credentials.TransportCredentials
@@ -86,7 +90,7 @@ func NewLNDclient(lndOptions LNDoptions) (result *LNDWrapper, err error) {
 	if err != nil {
 		return nil, err
 	}
-	opts = append(opts, grpc.WithPerRPCCredentials(macCred))
+	opts = append(opts, grpc.WithPerRPCCredentials(macCred), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(GRPC_MAX_BYTES)))
 
 	conn, err := grpc.Dial(lndOptions.Address, opts...)
 	if err != nil {
