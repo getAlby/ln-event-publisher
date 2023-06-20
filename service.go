@@ -25,7 +25,7 @@ type Config struct {
 	LNDAddress              string `envconfig:"LND_ADDRESS" required:"true"`
 	LNDMacaroonFile         string `envconfig:"LND_MACAROON_FILE"`
 	LNDCertFile             string `envconfig:"LND_CERT_FILE"`
-	DatabaseUri             string `envconfig:"DATABASE_URI"`
+	DatabaseUri             string `envconfig:"DATABASE_URI" required:"true"`
 	DatabaseMaxConns        int    `envconfig:"DATABASE_MAX_CONNS" default:"10"`
 	DatabaseMaxIdleConns    int    `envconfig:"DATABASE_MAX_IDLE_CONNS" default:"5"`
 	DatabaseConnMaxLifetime int    `envconfig:"DATABASE_CONN_MAX_LIFETIME" default:"1800"` // 30 minutes
@@ -97,7 +97,7 @@ func (svc *Service) lookupLastAddIndices(ctx context.Context) (invoiceIndex, pay
 	//get earliest non-final payment in db
 	//that is not older than 24h (to avoid putting too much stress on LND)
 	//so we assume that we are never online for longer than 24h
-	//or the last completed payment
+	//in case there are no non-final payments in the db, we get the last completed payment
 	firstInflightOrLastCompleted := &Payment{}
 	err = svc.db.Where(&Payment{
 		Status: lnrpc.Payment_IN_FLIGHT,
