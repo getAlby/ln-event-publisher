@@ -166,8 +166,8 @@ func (svc *Service) CheckPaymentsSinceLast(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	if ts == 0 {
+	logrus.Infof("Found timestamp for last payment %d", ts)
+	if ts <= 0 {
 		logrus.Info("timestamp is 0, no need to check anything.")
 		//no need to check anything
 		return nil
