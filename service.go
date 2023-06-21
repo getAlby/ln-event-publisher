@@ -106,7 +106,7 @@ func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPayment
 	firstInflightOrLastCompleted := &Payment{}
 	err = svc.db.Limit(1).Where(&Payment{
 		Status: lnrpc.Payment_IN_FLIGHT,
-	}).Where("created_at > ?", time.Now().Add(-24*time.Hour)).Order("creation_time_ns ASC").First(firstInflightOrLastCompleted).Error
+	}).Where("creation_time_ns > ?", time.Now().Add(-24*time.Hour).UnixNano()).Order("creation_time_ns ASC").First(firstInflightOrLastCompleted).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			//look up last completed payment that we have instead
