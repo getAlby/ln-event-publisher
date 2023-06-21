@@ -106,7 +106,7 @@ func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPayment
 	firstInflightOrLastCompleted := &Payment{}
 	err = svc.db.Where(&Payment{
 		Status: lnrpc.Payment_IN_FLIGHT,
-	}).Where("created_at > ?", time.Now().Add(-24*time.Hour)).First(firstInflightOrLastCompleted).Error
+	}).Where("created_at > ?", time.Now().Add(-24*time.Hour)).Order("creation_time_ns ASC").First(firstInflightOrLastCompleted).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			//look up last completed payment that we have instead
@@ -121,8 +121,6 @@ func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPayment
 				//real db error
 				return 0, err
 			}
-			// in this case we don't need to do -1
-			//because we have already processsed this invoice
 			return firstInflightOrLastCompleted.CreationTimeNs / 1e9, nil
 		}
 		logrus.Error(err)
@@ -130,7 +128,7 @@ func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPayment
 		return
 	}
 	//we want an update on this invoice
-	//so we subtract another second
+	//so we subtract another second to be sure to avoid rounding errors
 	return (firstInflightOrLastCompleted.CreationTimeNs / 1e9) - 1, nil
 }
 
@@ -169,8 +167,8 @@ func (svc *Service) CheckPaymentsSinceLast(ctx context.Context) error {
 		return err
 	}
 
-	logrus.Infof("Checking payments since last timestamp: %d", ts)
 	if ts == 0 {
+		logrus.Info("timestamp is 0, no need to check anything.")
 		//no need to check anything
 		return nil
 	}
@@ -184,10 +182,11 @@ func (svc *Service) CheckPaymentsSinceLast(ctx context.Context) error {
 		return err
 	}
 
-	logrus.Infof("Found %d payments since first index. First index offset %d, last index offset %d",
+	logrus.Infof("Found %d payments since starting timestamp. First index offset %d, last index offset %d, timestamp %d",
 		len(paymentResponse.Payments),
 		paymentResponse.FirstIndexOffset,
-		paymentResponse.LastIndexOffset)
+		paymentResponse.LastIndexOffset,
+		ts)
 	//call process invoice on all of these
 	//this call is idempotent: if we already had them in the database
 	//in their current state, we won't republish them.
