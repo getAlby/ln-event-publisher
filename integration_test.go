@@ -251,7 +251,7 @@ func (mlnd *MockLND) mockPayment(status lnrpc.Payment_PaymentStatus, index uint6
 		Status:          status,
 		FeeSat:          0,
 		FeeMsat:         0,
-		CreationTimeNs:  0,
+		CreationTimeNs:  time.Now().UnixNano(),
 		Htlcs:           []*lnrpc.HTLCAttempt{},
 		PaymentIndex:    index,
 		FailureReason:   0,
