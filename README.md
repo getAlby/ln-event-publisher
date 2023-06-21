@@ -8,14 +8,18 @@ might have been possibly missed while it was offline (both incoming and outgoing
 General configuration env vars (always needed):
 - "LND_ADDRESS": `your-lnd-host:10009`
 - "DATABASE_URI": PG database connection string
-- "LND_MACAROON_HEX": LND macaroon in hex format
-- "LND_CERT_HEX": LND certificate in hex format
+- "LND_MACAROON_FILE": LND macaroon file
+- "LND_CERT_FILE": LND certificate file
 - "RABBITMQ_URI": `amqp://user:password@host/vhost`
+
 - Publishes incoming payments (= "invoices") to the `lnd_invoice` exchange
 - Publishes outgoing payments to the`lnd_payment` exchange
+
+Possible missed-while-offline incoming invoices are handled by looking up the last invoice in the db and specifying the "AddIndex" when subscribing to invoices over grpc.
+Possible missed-while-offline outgoing payments are handled by looking up the earliest incomplete (or last complete if none incomplete) payment in the database and making a "ListPayments" call to LND with a starting timestamp equal to the timestamp of this payment.
 # LND incoming invoices
 - Payload [lnrpc.Invoice](https://github.com/lightningnetwork/lnd/blob/master/lnrpc/lightning.pb.go#L11597) struct.
 - Routing key: `invoice.incoming.settled`
 # LND outgoing payments
-- Payload lnrpc.Payment
+- Payload [lnrpc.Payment](https://github.com/lightningnetwork/lnd/blob/master/lnrpc/lightning.pb.go#L12612)
 - Routing keys `payment.outgoing.settled`, `payment.outgoing.error`
