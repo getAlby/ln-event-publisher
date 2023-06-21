@@ -69,6 +69,18 @@ func main() {
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
 	//start both subscriptions
-	go func() { logrus.Fatal(svc.startInvoiceSubscription(ctx)) }()
-	logrus.Fatal(svc.startPaymentSubscription(ctx))
+	go func() {
+		err = svc.startInvoiceSubscription(ctx)
+		if err != nil && err != context.Canceled {
+			logrus.Fatal(err)
+		}
+	}()
+	go func() {
+		err = svc.startPaymentSubscription(ctx)
+		if err != nil && err != context.Canceled {
+			logrus.Fatal(err)
+		}
+	}()
+	<-ctx.Done()
+
 }
