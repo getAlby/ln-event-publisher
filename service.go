@@ -104,7 +104,7 @@ func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPayment
 	//so we assume that we are never online for longer than 24h
 	//in case there are no non-final payments in the db, we get the last completed payment
 	firstInflightOrLastCompleted := &Payment{}
-	err = svc.db.Where(&Payment{
+	err = svc.db.Limit(1).Where(&Payment{
 		Status: lnrpc.Payment_IN_FLIGHT,
 	}).Where("created_at > ?", time.Now().Add(-24*time.Hour)).Order("creation_time_ns ASC").First(firstInflightOrLastCompleted).Error
 	if err != nil {
