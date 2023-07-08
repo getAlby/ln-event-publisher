@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
@@ -85,6 +86,10 @@ func (svc *Service) InitRabbitMq() (err error) {
 		return err
 	}
 	svc.rabbitChannel = ch
+
+	// Put the channel in confirm mode
+	svc.rabbitChannel.Confirm(false)
+
 	return
 }
 
@@ -138,7 +143,7 @@ func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.
 	}).Error
 }
 
-func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (alreadyProcessed bool, err error) {
+func (svc *Service) StorePayment(ctx context.Context, tx *gorm.DB, payment *lnrpc.Payment) (alreadyProcessed bool, err error) {
 	toUpdate := &Payment{
 		Model: gorm.Model{
 			ID: uint(payment.PaymentIndex),
@@ -146,18 +151,24 @@ func (svc *Service) StorePayment(ctx context.Context, payment *lnrpc.Payment) (a
 		CreationTimeNs: payment.CreationTimeNs,
 		PaymentHash:    payment.PaymentHash,
 	}
-	err = svc.db.FirstOrCreate(&toUpdate).Error
-	if err != nil {
+
+	if err := tx.Error; err != nil {
 		return false, err
 	}
+
+	if err := tx.FirstOrCreate(&toUpdate).Error; err != nil {
+		return false, err
+	}
+
 	//no need to update, we already processed this payment
 	if toUpdate.Status == payment.Status {
 		return true, nil
 	}
+
 	//we didn't know about the last status of this payment
 	//so we didn't process it yet
 	toUpdate.Status = payment.Status
-	return false, svc.db.WithContext(ctx).Save(toUpdate).Error
+	return false, tx.WithContext(ctx).Save(toUpdate).Error
 }
 
 func (svc *Service) CheckPaymentsSinceLast(ctx context.Context) error {
@@ -268,10 +279,19 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
 }
 
 func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) error {
-	alreadyPublished, err := svc.StorePayment(ctx, payment)
+	tx := svc.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	alreadyPublished, err := svc.StorePayment(ctx, tx, payment)
 	if err != nil {
+		tx.Rollback()
 		return err
 	}
+
 	routingKey, notInflight := codeMappings[payment.Status]
 	//if the payment was in the database as final then we already published it
 	//and we only publish completed payments
@@ -279,11 +299,12 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 		logrus.Infof("Publishing payment status %v hash %s", payment.Status, payment.PaymentHash)
 		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
-			//todo: rollback storepayment db transaction
+			tx.Rollback()
 			return err
 		}
 	}
-	return nil
+
+	return tx.Commit().Error
 }
 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
@@ -307,7 +328,8 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 	if err != nil {
 		return err
 	}
-	return svc.rabbitChannel.PublishWithContext(
+
+	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
 		ctx,
 		//todo from config
 		exchange, key, false, false, amqp.Publishing{
@@ -315,4 +337,11 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 			Body:        payloadBytes.Bytes(),
 		},
 	)
+
+	ok, err := conf.WaitContext(ctx)
+	if !ok {
+		return fmt.Errorf("publisher confirm failed for message %+v: %v", payload, err)
+	}
+
+	return err
 }
