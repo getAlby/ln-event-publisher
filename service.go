@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -341,7 +340,7 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 
 	ok, err := conf.WaitContext(ctx)
 	if !ok {
-		return errors.New(fmt.Sprintf("publisher confirm failed for message %+v\n", payload))
+		return fmt.Errorf("publisher confirm failed for message %+v: %v", payload, err)
 	}
 
 	return err
