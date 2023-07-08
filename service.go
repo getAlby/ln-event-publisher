@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
@@ -85,6 +87,10 @@ func (svc *Service) InitRabbitMq() (err error) {
 		return err
 	}
 	svc.rabbitChannel = ch
+
+	// Put the channel in confirm mode
+	svc.rabbitChannel.Confirm(false)
+
 	return
 }
 
@@ -307,7 +313,8 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 	if err != nil {
 		return err
 	}
-	return svc.rabbitChannel.PublishWithContext(
+
+	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
 		ctx,
 		//todo from config
 		exchange, key, false, false, amqp.Publishing{
@@ -315,4 +322,11 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 			Body:        payloadBytes.Bytes(),
 		},
 	)
+
+	ok, err := conf.WaitContext(ctx)
+	if !ok {
+		return errors.New(fmt.Sprintf("publisher confirm failed for message %+v\n", payload))
+	}
+
+	return err
 }
