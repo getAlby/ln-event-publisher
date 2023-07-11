@@ -6,6 +6,7 @@ import (
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func OpenDB(config *Config) (db *gorm.DB, err error) {
@@ -13,6 +14,9 @@ func OpenDB(config *Config) (db *gorm.DB, err error) {
 	if err != nil {
 		return nil, err
 	}
+	//don't print warnings for slow sql
+	//because we use db transactions that span the rabbitmq publish operation
+	db.Logger.LogMode(logger.Error)
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
