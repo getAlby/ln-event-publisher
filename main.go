@@ -15,6 +15,7 @@ import (
 
 func main() {
 	c := &Config{}
+	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	// Load configruation from environment variables
 	err := godotenv.Load(".env")
@@ -71,13 +72,13 @@ func main() {
 	//start both subscriptions
 	go func() {
 		err = svc.startInvoiceSubscription(ctx)
-		if err != nil && err != context.Canceled {
+		if err != nil {
 			logrus.Fatal(err)
 		}
 	}()
 	go func() {
 		err = svc.startPaymentSubscription(ctx)
-		if err != nil && err != context.Canceled {
+		if err != nil {
 			logrus.Fatal(err)
 		}
 	}()
