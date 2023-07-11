@@ -351,6 +351,7 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
+	logrus.Info("Publishing message")
 	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
 		timeoutCtx,
 		//todo from config
