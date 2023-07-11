@@ -298,6 +298,12 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 	if notInflight && !alreadyPublished {
 		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
+			logrus.WithFields(
+				logrus.Fields{
+					"payload_type": "payment",
+					"status":       fmt.Sprintf("%s", payment.Status),
+					"payment_hash": payment.PaymentHash,
+				}).WithError(err).Info("error publishing payment")
 			tx.Rollback()
 			return err
 		}
@@ -316,6 +322,11 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 	if invoice.State == lnrpc.Invoice_SETTLED {
 		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 		if err != nil {
+			logrus.WithFields(
+				logrus.Fields{
+					"payload_type": "invoice",
+					"payment_hash": hex.EncodeToString(invoice.RHash),
+				}).WithError(err).Info("error publishing invoice")
 			return err
 		}
 		logrus.WithFields(
@@ -354,7 +365,7 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 
 	ok, err := conf.WaitContext(timeoutCtx)
 	if !ok {
-		return fmt.Errorf("publisher confirm failed for message %+v: %v", payload, err)
+		return fmt.Errorf("publisher confirm failed %v", err)
 	}
 
 	return err
