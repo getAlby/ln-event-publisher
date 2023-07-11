@@ -349,7 +349,7 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 		return err
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
 		timeoutCtx,
