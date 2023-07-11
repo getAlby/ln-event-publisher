@@ -16,7 +16,7 @@ func OpenDB(config *Config) (db *gorm.DB, err error) {
 	}
 	//don't print warnings for slow sql
 	//because we use db transactions that span the rabbitmq publish operation
-	db.Logger.LogMode(logger.Error)
+	db.Logger = db.Logger.LogMode(logger.Error)
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, err
