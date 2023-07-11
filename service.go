@@ -303,7 +303,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 					"payload_type": "payment",
 					"status":       fmt.Sprintf("%s", payment.Status),
 					"payment_hash": payment.PaymentHash,
-				}).WithError(err).Info("error publishing payment")
+				}).WithError(err).Error("error publishing payment")
 			tx.Rollback()
 			return err
 		}
@@ -326,7 +326,7 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 				logrus.Fields{
 					"payload_type": "invoice",
 					"payment_hash": hex.EncodeToString(invoice.RHash),
-				}).WithError(err).Info("error publishing invoice")
+				}).WithError(err).Error("error publishing invoice")
 			return err
 		}
 		logrus.WithFields(
