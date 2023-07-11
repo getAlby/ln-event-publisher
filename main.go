@@ -15,6 +15,7 @@ import (
 
 func main() {
 	c := &Config{}
+	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	// Load configruation from environment variables
 	err := godotenv.Load(".env")

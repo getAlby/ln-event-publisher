@@ -296,12 +296,17 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 	//if the payment was in the database as final then we already published it
 	//and we only publish completed payments
 	if notInflight && !alreadyPublished {
-		logrus.Infof("Publishing payment status %v hash %s", payment.Status, payment.PaymentHash)
 		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
 			tx.Rollback()
 			return err
 		}
+		logrus.WithFields(
+			logrus.Fields{
+				"payload_type": "payment",
+				"status":       fmt.Sprintf("%s", payment.Status),
+				"payment_hash": payment.PaymentHash,
+			}).Info("published payment")
 	}
 
 	return tx.Commit().Error
@@ -309,11 +314,15 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	if invoice.State == lnrpc.Invoice_SETTLED {
-		logrus.Infof("Publishing invoice with hash %s", hex.EncodeToString(invoice.RHash))
 		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 		if err != nil {
 			return err
 		}
+		logrus.WithFields(
+			logrus.Fields{
+				"payload_type": "invoice",
+				"payment_hash": hex.EncodeToString(invoice.RHash),
+			}).Info("published invoice")
 		//add it to the database if we have one
 		if svc.db != nil {
 			return svc.AddLastPublishedInvoice(ctx, invoice)
@@ -329,16 +338,21 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 		return err
 	}
 
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
 	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
-		ctx,
+		timeoutCtx,
 		//todo from config
 		exchange, key, false, false, amqp.Publishing{
 			ContentType: "application/json",
 			Body:        payloadBytes.Bytes(),
 		},
 	)
+	if err != nil {
+		return err
+	}
 
-	ok, err := conf.WaitContext(ctx)
+	ok, err := conf.WaitContext(timeoutCtx)
 	if !ok {
 		return fmt.Errorf("publisher confirm failed for message %+v: %v", payload, err)
 	}
