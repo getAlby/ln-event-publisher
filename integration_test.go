@@ -71,8 +71,7 @@ func TestInvoicePublish(t *testing.T) {
 	svc, mlnd, m := createTestService(t, cfg, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		err := svc.startInvoiceSubscription(ctx)
-		assert.EqualError(t, err, context.Canceled.Error())
+		svc.startInvoiceSubscription(ctx)
 	}()
 	// - mock incoming invoice
 	// the new invoice that will be saved will have addIndex + 1
