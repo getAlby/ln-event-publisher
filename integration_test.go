@@ -97,8 +97,9 @@ func TestInvoicePublish(t *testing.T) {
 }
 func TestPaymentPublish(t *testing.T) {
 	cfg := &Config{
-		DatabaseUri: os.Getenv("DATABASE_URI"),
-		RabbitMQUri: os.Getenv("RABBITMQ_URI"),
+		DatabaseUri:            os.Getenv("DATABASE_URI"),
+		RabbitMQUri:            os.Getenv("RABBITMQ_URI"),
+		RabbitMQTimeoutSeconds: 1,
 	}
 	svc, mlnd, m := createTestService(t, cfg, LNDPaymentExchange, "payment.outgoing.*")
 	defer svc.db.Exec("delete from payments;")
