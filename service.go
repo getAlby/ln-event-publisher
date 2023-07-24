@@ -31,6 +31,7 @@ type Config struct {
 	DatabaseMaxIdleConns    int    `envconfig:"DATABASE_MAX_IDLE_CONNS" default:"5"`
 	DatabaseConnMaxLifetime int    `envconfig:"DATABASE_CONN_MAX_LIFETIME" default:"1800"` // 30 minutes
 	RabbitMQUri             string `envconfig:"RABBITMQ_URI" required:"true"`
+	RabbitMQTimeoutSeconds  int    `envconfig:"RABBITMQ_TIMEOUT_SECONDS" default:"10"`
 	SentryDSN               string `envconfig:"SENTRY_DSN"`
 }
 
@@ -349,7 +350,7 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 		return err
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(svc.cfg.RabbitMQTimeoutSeconds)*time.Second)
 	defer cancel()
 	logrus.Info("Publishing message")
 	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
