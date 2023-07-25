@@ -140,7 +140,8 @@ func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPayment
 
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	return svc.db.WithContext(ctx).Create(&Invoice{
-		AddIndex: invoice.AddIndex,
+		AddIndex:    invoice.AddIndex,
+		SettleIndex: invoice.SettleIndex,
 	}).Error
 }
 

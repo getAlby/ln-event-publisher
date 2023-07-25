@@ -42,7 +42,8 @@ func OpenDB(config *Config) (db *gorm.DB, err error) {
 
 type Invoice struct {
 	gorm.Model
-	AddIndex uint64
+	AddIndex    uint64
+	SettleIndex uint64
 }
 
 type Payment struct {
