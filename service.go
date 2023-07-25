@@ -101,7 +101,10 @@ func (svc *Service) lookupLastInvoiceIndex(ctx context.Context) (index uint64, e
 	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
 		return 0, tx.Error
 	}
-	return inv.AddIndex, nil
+	//settle index is monotonically increasing for each settled invoice
+	//(https://lightning.engineering/api-docs/api/lnd/lightning/subscribe-invoices)
+	//so the last payment in the database should have the highest settle invoice
+	return inv.SettleIndex, nil
 }
 
 func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPaymentCreationTimeUnix int64, err error) {
@@ -249,18 +252,18 @@ func (svc *Service) startPaymentSubscription(ctx context.Context) error {
 }
 
 func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
-	addIndex, err := svc.lookupLastInvoiceIndex(ctx)
+	settleIndex, err := svc.lookupLastInvoiceIndex(ctx)
 	if err != nil {
 		return err
 	}
 	invoiceSub, err := svc.lnd.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{
-		AddIndex: addIndex,
+		SettleIndex: settleIndex,
 	})
 	if err != nil {
 		sentry.CaptureException(err)
 		return err
 	}
-	logrus.Infof("Starting invoice subscription from index %d", addIndex)
+	logrus.Infof("Starting invoice subscription from index %d", settleIndex)
 	for {
 		select {
 		case <-ctx.Done():
