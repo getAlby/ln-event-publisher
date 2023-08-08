@@ -56,10 +56,14 @@ func main() {
 		sentry.CaptureException(err)
 		logrus.Fatal(err)
 	}
+	cci := make(chan InvoiceConfirmation, 100)
+	ccp := make(chan PaymentConfirmation, 100)
 	svc := &Service{
-		cfg: c,
-		lnd: client,
-		db:  db,
+		cfg:                    c,
+		lnd:                    client,
+		db:                     db,
+		confirmChannelInvoices: cci,
+		confirmChannelPayments: ccp,
 	}
 	err = svc.InitRabbitMq()
 	if err != nil {
@@ -69,7 +73,7 @@ func main() {
 	backgroundCtx := context.Background()
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
-	//start both subscriptions
+	//todo: add waitgroups
 	go func() {
 		err = svc.startInvoiceSubscription(ctx)
 		if err != nil {
@@ -77,10 +81,20 @@ func main() {
 		}
 	}()
 	go func() {
+		//listen to confirm channel from invoices
+		//and update apropriately in the database
+		err = svc.StartInvoiceConfirmationLoop(ctx)
+	}()
+	go func() {
 		err = svc.startPaymentSubscription(ctx)
 		if err != nil {
 			logrus.Fatal(err)
 		}
+	}()
+	go func() {
+		//listen to confirm channel from payments
+		//and update apropriately in the database
+		err = svc.StartPaymentConfirmationLoop(ctx)
 	}()
 	<-ctx.Done()
 

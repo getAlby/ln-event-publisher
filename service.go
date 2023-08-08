@@ -45,10 +45,22 @@ const (
 )
 
 type Service struct {
-	cfg           *Config
-	lnd           lnd.LightningClientWrapper
-	rabbitChannel *amqp.Channel
-	db            *gorm.DB
+	cfg                    *Config
+	lnd                    lnd.LightningClientWrapper
+	rabbitChannel          *amqp.Channel
+	db                     *gorm.DB
+	confirmChannelInvoices chan InvoiceConfirmation
+	confirmChannelPayments chan PaymentConfirmation
+}
+
+type InvoiceConfirmation struct {
+	confirmation *amqp.DeferredConfirmation
+	invoice      *lnrpc.Invoice
+}
+type PaymentConfirmation struct {
+	confirmation *amqp.DeferredConfirmation
+	invoice      *lnrpc.Payment
+	tx           *gorm.DB
 }
 
 func (svc *Service) InitRabbitMq() (err error) {
@@ -345,6 +357,35 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 		}
 	}
 	return nil
+}
+
+func (svc *Service) StartInvoiceConfirmationLoop(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ic := <-svc.confirmChannelInvoices:
+			//todo: check confirmation & save invoice
+			ic.confirmation.WaitContext(ctx)
+
+		}
+	}
+}
+
+func (svc *Service) StartPaymentConfirmationLoop(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ic := <-svc.confirmChannelPayments:
+			ok, err := ic.confirmation.WaitContext(ctx)
+			if !ok {
+				//rollback transaction
+				return fmt.Errorf("publisher confirm failed %v", err)
+			}
+			//ok, commit transaction
+		}
+	}
 }
 
 func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exchange, key string) error {
