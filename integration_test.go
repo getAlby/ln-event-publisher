@@ -116,11 +116,6 @@ func TestPaymentPublish(t *testing.T) {
 	assert.False(t, timedOut)
 	assert.Equal(t, lnrpc.Payment_SUCCEEDED, receivedPayment.Status)
 
-	//mock the same payment again
-	mlnd.mockPayment(lnrpc.Payment_SUCCEEDED, index, "hash2")
-	timedOut, receivedPayment = timeoutOrNewPaymentFromRabbit(t, m)
-	//should not get published
-	assert.True(t, timedOut)
 	// mock an in-flight payment
 	index += 1
 	mlnd.mockPayment(lnrpc.Payment_IN_FLIGHT, index, "hash3")

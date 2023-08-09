@@ -60,7 +60,6 @@ type InvoiceConfirmation struct {
 type PaymentConfirmation struct {
 	confirmation *amqp.DeferredConfirmation
 	payment      *lnrpc.Payment
-	tx           *gorm.DB
 }
 
 func (svc *Service) InitRabbitMq() (err error) {
@@ -160,7 +159,7 @@ func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.
 	}).Error
 }
 
-func (svc *Service) StorePayment(ctx context.Context, tx *gorm.DB, payment *lnrpc.Payment) (alreadyProcessed bool, err error) {
+func (svc *Service) LookupOrCreate(ctx context.Context, payment *lnrpc.Payment) (alreadyProcessed bool, err error) {
 	toUpdate := &Payment{
 		Model: gorm.Model{
 			ID: uint(payment.PaymentIndex),
@@ -169,11 +168,7 @@ func (svc *Service) StorePayment(ctx context.Context, tx *gorm.DB, payment *lnrp
 		PaymentHash:    payment.PaymentHash,
 	}
 
-	if err := tx.Error; err != nil {
-		return false, err
-	}
-
-	if err := tx.FirstOrCreate(&toUpdate).Error; err != nil {
+	if err := svc.db.FirstOrCreate(&toUpdate).Error; err != nil {
 		return false, err
 	}
 
@@ -184,8 +179,7 @@ func (svc *Service) StorePayment(ctx context.Context, tx *gorm.DB, payment *lnrp
 
 	//we didn't know about the last status of this payment
 	//so we didn't process it yet
-	toUpdate.Status = payment.Status
-	return false, tx.WithContext(ctx).Save(toUpdate).Error
+	return false, nil
 }
 
 func (svc *Service) CheckPaymentsSinceLast(ctx context.Context) error {
@@ -296,16 +290,8 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
 }
 
 func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) error {
-	tx := svc.db.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-
-	alreadyPublished, err := svc.StorePayment(ctx, tx, payment)
+	alreadyPublished, err := svc.LookupOrCreate(ctx, payment)
 	if err != nil {
-		tx.Rollback()
 		return err
 	}
 
@@ -321,7 +307,6 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 					"status":       fmt.Sprintf("%s", payment.Status),
 					"payment_hash": payment.PaymentHash,
 				}).WithError(err).Error("error publishing payment")
-			tx.Rollback()
 			return err
 		}
 		logrus.WithFields(
@@ -333,7 +318,6 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 		svc.confirmChannelPayments <- PaymentConfirmation{
 			confirmation: conf,
 			payment:      payment,
-			tx:           tx,
 		}
 	}
 	return nil
@@ -391,21 +375,29 @@ func (svc *Service) StartPaymentConfirmationLoop(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return context.Canceled
-		case ic := <-svc.confirmChannelPayments:
-			ok, err := ic.confirmation.WaitContext(ctx)
+		case pc := <-svc.confirmChannelPayments:
+			ok, err := pc.confirmation.WaitContext(ctx)
 			if !ok {
 				//rollback transaction
 				return fmt.Errorf("publisher confirm failed %v", err)
 			}
-			//ok, commit transaction
-			err = ic.tx.Commit().Error
+			//ok, update payment in database
+			//if we get here, status is SUCCESS or FAILURE
+			err = svc.db.Save(&Payment{
+				Model: gorm.Model{
+					ID: uint(pc.payment.PaymentIndex),
+				},
+				PaymentHash:    pc.payment.PaymentHash,
+				CreationTimeNs: pc.payment.CreationTimeNs,
+				Status:         pc.payment.Status,
+			}).Error
 			if err != nil {
 				return err
 			}
 			logrus.WithFields(
 				logrus.Fields{
 					"payment_chan_length": len(svc.confirmChannelPayments),
-					"payment_hash":        ic.payment.PaymentHash,
+					"payment_hash":        pc.payment.PaymentHash,
 				}).Info("handled payment confirmation")
 		}
 	}
