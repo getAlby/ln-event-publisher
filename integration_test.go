@@ -70,9 +70,7 @@ func TestInvoicePublish(t *testing.T) {
 	}
 	svc, mlnd, m := createTestService(t, cfg, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		svc.startInvoiceSubscription(ctx)
-	}()
+	svc.StartRoutines(ctx)
 	// - mock incoming invoice
 	// the new invoice that will be saved will have addIndex + 1
 	err := mlnd.mockPaidInvoice(100, "integration test")

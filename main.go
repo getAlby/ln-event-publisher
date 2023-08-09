@@ -4,8 +4,6 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
@@ -77,50 +75,8 @@ func main() {
 	}
 	backgroundCtx := context.Background()
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
+	wg := svc.StartRoutines(ctx)
 
-	wg := sync.WaitGroup{}
-
-	wg.Add(1)
-	go func() {
-		err = svc.startInvoiceSubscription(ctx)
-		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
-			logrus.Fatal(err)
-		}
-		logrus.Info("invoice subscription loop done")
-		wg.Done()
-	}()
-	wg.Add(1)
-	go func() {
-		//listen to confirm channel from invoices
-		//and update apropriately in the database
-		err = svc.StartInvoiceConfirmationLoop(ctx)
-		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
-			logrus.Fatal(err)
-		}
-		logrus.Info("invoice confirmation loop done")
-		wg.Done()
-	}()
-	wg.Add(1)
-	go func() {
-		err = svc.startPaymentSubscription(ctx)
-		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
-			logrus.Fatal(err)
-		}
-		logrus.Info("payment subscription loop done")
-		wg.Done()
-	}()
-	wg.Add(1)
-	go func() {
-		//listen to confirm channel from payments
-		//and update apropriately in the database
-		err = svc.StartPaymentConfirmationLoop(ctx)
-		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
-			logrus.Fatal(err)
-		}
-
-		logrus.Info("payment confirmation loop done")
-		wg.Done()
-	}()
 	<-ctx.Done()
 	// start goroutine that will exit program after 10 seconds
 	go func() {
