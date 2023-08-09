@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,10 +81,10 @@ func main() {
 	wg.Add(1)
 	go func() {
 		err = svc.startInvoiceSubscription(ctx)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
 			logrus.Fatal(err)
 		}
-		logrus.Info("invoice sub done")
+		logrus.Info("invoice subscription loop done")
 		wg.Done()
 	}()
 	wg.Add(1)
@@ -91,19 +92,19 @@ func main() {
 		//listen to confirm channel from invoices
 		//and update apropriately in the database
 		err = svc.StartInvoiceConfirmationLoop(ctx)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
 			logrus.Fatal(err)
 		}
-		logrus.Info("invoice conf done")
+		logrus.Info("invoice confirmation loop done")
 		wg.Done()
 	}()
 	wg.Add(1)
 	go func() {
 		err = svc.startPaymentSubscription(ctx)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
 			logrus.Fatal(err)
 		}
-		logrus.Info("payment sub done")
+		logrus.Info("payment subscription loop done")
 		wg.Done()
 	}()
 	wg.Add(1)
@@ -111,11 +112,11 @@ func main() {
 		//listen to confirm channel from payments
 		//and update apropriately in the database
 		err = svc.StartPaymentConfirmationLoop(ctx)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
 			logrus.Fatal(err)
 		}
 
-		logrus.Info("payment confirmation done")
+		logrus.Info("payment confirmation loop done")
 		wg.Done()
 	}()
 	<-ctx.Done()
@@ -127,4 +128,5 @@ func main() {
 	}()
 	//wait for goroutines to finish
 	wg.Wait()
+	logrus.Info("Exited gracefully. Goodbye.")
 }

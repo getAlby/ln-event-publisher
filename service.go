@@ -367,7 +367,7 @@ func (svc *Service) StartInvoiceConfirmationLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return context.Canceled
 		case ic := <-svc.confirmChannelInvoices:
 			logrus.Infof("invoice chan length %d", len(svc.confirmChannelInvoices))
 			ok, err := ic.confirmation.WaitContext(ctx)
@@ -386,7 +386,7 @@ func (svc *Service) StartPaymentConfirmationLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return context.Canceled
 		case ic := <-svc.confirmChannelPayments:
 			logrus.Infof("payment chan length %d", len(svc.confirmChannelPayments))
 			ok, err := ic.confirmation.WaitContext(ctx)
