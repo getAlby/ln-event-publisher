@@ -363,7 +363,7 @@ func (svc *Service) StartInvoiceConfirmationLoop(ctx context.Context) error {
 			}
 			logrus.WithFields(
 				logrus.Fields{
-					"invoice_chan_lenght": len(svc.confirmChannelInvoices),
+					"invoice_chan_length": len(svc.confirmChannelInvoices),
 					"payment_hash":        hex.EncodeToString(ic.invoice.RHash),
 				}).Info("handled invoice confirmation")
 		}
