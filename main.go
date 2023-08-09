@@ -59,6 +59,8 @@ func main() {
 		sentry.CaptureException(err)
 		logrus.Fatal(err)
 	}
+	//create buffered channels to handle publisher confirms
+	//so we don't block publishing if there is a peak in traffic
 	cci := make(chan InvoiceConfirmation, 100)
 	ccp := make(chan PaymentConfirmation, 100)
 	svc := &Service{

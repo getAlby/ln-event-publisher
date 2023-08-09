@@ -59,7 +59,7 @@ type InvoiceConfirmation struct {
 }
 type PaymentConfirmation struct {
 	confirmation *amqp.DeferredConfirmation
-	invoice      *lnrpc.Payment
+	payment      *lnrpc.Payment
 	tx           *gorm.DB
 }
 
@@ -332,7 +332,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 			}).Info("published payment")
 		svc.confirmChannelPayments <- PaymentConfirmation{
 			confirmation: conf,
-			invoice:      payment,
+			payment:      payment,
 			tx:           tx,
 		}
 	}
@@ -369,7 +369,6 @@ func (svc *Service) StartInvoiceConfirmationLoop(ctx context.Context) error {
 		case <-ctx.Done():
 			return context.Canceled
 		case ic := <-svc.confirmChannelInvoices:
-			logrus.Infof("invoice chan length %d", len(svc.confirmChannelInvoices))
 			ok, err := ic.confirmation.WaitContext(ctx)
 			if !ok {
 				return fmt.Errorf("publisher confirm failed %v", err)
@@ -378,6 +377,11 @@ func (svc *Service) StartInvoiceConfirmationLoop(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
+			logrus.WithFields(
+				logrus.Fields{
+					"invoice_chan_lenght": len(svc.confirmChannelInvoices),
+					"payment_hash":        hex.EncodeToString(ic.invoice.RHash),
+				}).Info("handled invoice confirmation")
 		}
 	}
 }
@@ -388,7 +392,6 @@ func (svc *Service) StartPaymentConfirmationLoop(ctx context.Context) error {
 		case <-ctx.Done():
 			return context.Canceled
 		case ic := <-svc.confirmChannelPayments:
-			logrus.Infof("payment chan length %d", len(svc.confirmChannelPayments))
 			ok, err := ic.confirmation.WaitContext(ctx)
 			if !ok {
 				//rollback transaction
@@ -399,6 +402,11 @@ func (svc *Service) StartPaymentConfirmationLoop(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
+			logrus.WithFields(
+				logrus.Fields{
+					"payment_chan_length": len(svc.confirmChannelPayments),
+					"payment_hash":        hex.EncodeToString([]byte(ic.payment.PaymentHash)),
+				}).Info("handled payment confirmation")
 		}
 	}
 }
@@ -410,11 +418,8 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 		return nil, err
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(svc.cfg.RabbitMQTimeoutSeconds)*time.Second)
-	defer cancel()
-	logrus.Info("Publishing message")
 	return svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
-		timeoutCtx,
+		ctx,
 		exchange, key, false, false, amqp.Publishing{
 			ContentType: "application/json",
 			Body:        payloadBytes.Bytes(),
