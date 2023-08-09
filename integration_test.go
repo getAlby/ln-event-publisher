@@ -18,7 +18,13 @@ import (
 
 func createTestService(t *testing.T, cfg *Config, exchange, routingKey string) (svc *Service, mlnd *MockLND, msgs <-chan amqp091.Delivery) {
 
-	svc = &Service{cfg: cfg}
+	cci := make(chan InvoiceConfirmation, 100)
+	ccp := make(chan PaymentConfirmation, 100)
+	svc = &Service{
+		cfg:                    cfg,
+		confirmChannelInvoices: cci,
+		confirmChannelPayments: ccp,
+	}
 	mlnd = &MockLND{
 		Sub: &MockSubscribeInvoices{invoiceChan: make(chan *lnrpc.Invoice)},
 		PaymentSub: &MockSubscribePayments{
@@ -101,10 +107,7 @@ func TestPaymentPublish(t *testing.T) {
 	svc, mlnd, m := createTestService(t, cfg, LNDPaymentExchange, "payment.outgoing.*")
 	defer svc.db.Exec("delete from payments;")
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		err := svc.startPaymentSubscription(ctx)
-		assert.EqualError(t, err, context.Canceled.Error())
-	}()
+	svc.StartRoutines(ctx)
 	// - mock outgoing payment
 	index := uint64(1)
 	//check that it gets published
@@ -167,10 +170,7 @@ func TestPaymentPublish(t *testing.T) {
 	}
 	//   - start service again,
 	ctx, cancel2 := context.WithCancel(context.Background())
-	go func() {
-		err := svc.startPaymentSubscription(ctx)
-		assert.EqualError(t, err, context.Canceled.Error())
-	}()
+	svc.StartRoutines(ctx)
 	// test that all new updates are being published
 	// but not the existing success
 	timedOut, receivedPayment = timeoutOrNewPaymentFromRabbit(t, m)

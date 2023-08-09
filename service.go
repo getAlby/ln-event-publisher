@@ -405,7 +405,7 @@ func (svc *Service) StartPaymentConfirmationLoop(ctx context.Context) error {
 			logrus.WithFields(
 				logrus.Fields{
 					"payment_chan_length": len(svc.confirmChannelPayments),
-					"payment_hash":        hex.EncodeToString([]byte(ic.payment.PaymentHash)),
+					"payment_hash":        ic.payment.PaymentHash,
 				}).Info("handled payment confirmation")
 		}
 	}
