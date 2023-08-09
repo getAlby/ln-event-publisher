@@ -313,7 +313,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 	//if the payment was in the database as final then we already published it
 	//and we only publish completed payments
 	if notInflight && !alreadyPublished {
-		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
+		conf, err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
 			logrus.WithFields(
 				logrus.Fields{
@@ -330,14 +330,18 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 				"status":       fmt.Sprintf("%s", payment.Status),
 				"payment_hash": payment.PaymentHash,
 			}).Info("published payment")
+		svc.confirmChannelPayments <- PaymentConfirmation{
+			confirmation: conf,
+			invoice:      payment,
+			tx:           tx,
+		}
 	}
-
-	return tx.Commit().Error
+	return nil
 }
 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	if invoice.State == lnrpc.Invoice_SETTLED {
-		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
+		conf, err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 		if err != nil {
 			logrus.WithFields(
 				logrus.Fields{
@@ -351,9 +355,9 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 				"payload_type": "invoice",
 				"payment_hash": hex.EncodeToString(invoice.RHash),
 			}).Info("published invoice")
-		//add it to the database if we have one
-		if svc.db != nil {
-			return svc.AddLastPublishedInvoice(ctx, invoice)
+		svc.confirmChannelInvoices <- InvoiceConfirmation{
+			confirmation: conf,
+			invoice:      invoice,
 		}
 	}
 	return nil
@@ -365,9 +369,15 @@ func (svc *Service) StartInvoiceConfirmationLoop(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case ic := <-svc.confirmChannelInvoices:
-			//todo: check confirmation & save invoice
-			ic.confirmation.WaitContext(ctx)
-
+			logrus.Infof("invoice chan length %d", len(svc.confirmChannelInvoices))
+			ok, err := ic.confirmation.WaitContext(ctx)
+			if !ok {
+				return fmt.Errorf("publisher confirm failed %v", err)
+			}
+			err = svc.AddLastPublishedInvoice(ctx, ic.invoice)
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -378,42 +388,36 @@ func (svc *Service) StartPaymentConfirmationLoop(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case ic := <-svc.confirmChannelPayments:
+			logrus.Infof("payment chan length %d", len(svc.confirmChannelPayments))
 			ok, err := ic.confirmation.WaitContext(ctx)
 			if !ok {
 				//rollback transaction
 				return fmt.Errorf("publisher confirm failed %v", err)
 			}
 			//ok, commit transaction
+			err = ic.tx.Commit().Error
+			if err != nil {
+				return err
+			}
 		}
 	}
 }
 
-func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exchange, key string) error {
+func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exchange, key string) (conf *amqp.DeferredConfirmation, err error) {
 	payloadBytes := new(bytes.Buffer)
-	err := json.NewEncoder(payloadBytes).Encode(payload)
+	err = json.NewEncoder(payloadBytes).Encode(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(svc.cfg.RabbitMQTimeoutSeconds)*time.Second)
 	defer cancel()
 	logrus.Info("Publishing message")
-	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
+	return svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
 		timeoutCtx,
-		//todo from config
 		exchange, key, false, false, amqp.Publishing{
 			ContentType: "application/json",
 			Body:        payloadBytes.Bytes(),
 		},
 	)
-	if err != nil {
-		return err
-	}
-
-	ok, err := conf.WaitContext(timeoutCtx)
-	if !ok {
-		return fmt.Errorf("publisher confirm failed %v", err)
-	}
-
-	return err
 }
