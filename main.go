@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"sync"
+	"time"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
@@ -73,29 +75,56 @@ func main() {
 	backgroundCtx := context.Background()
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
-	//todo: add waitgroups
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
 	go func() {
 		err = svc.startInvoiceSubscription(ctx)
 		if err != nil {
 			logrus.Fatal(err)
 		}
+		logrus.Info("invoice sub done")
+		wg.Done()
 	}()
+	wg.Add(1)
 	go func() {
 		//listen to confirm channel from invoices
 		//and update apropriately in the database
 		err = svc.StartInvoiceConfirmationLoop(ctx)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		logrus.Info("invoice conf done")
+		wg.Done()
 	}()
+	wg.Add(1)
 	go func() {
 		err = svc.startPaymentSubscription(ctx)
 		if err != nil {
 			logrus.Fatal(err)
 		}
+		logrus.Info("payment sub done")
+		wg.Done()
 	}()
+	wg.Add(1)
 	go func() {
 		//listen to confirm channel from payments
 		//and update apropriately in the database
 		err = svc.StartPaymentConfirmationLoop(ctx)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+
+		logrus.Info("payment confirmation done")
+		wg.Done()
 	}()
 	<-ctx.Done()
+	// start goroutine that will exit program after 10 seconds
+	go func() {
+		time.Sleep(10 * time.Second)
+		logrus.Fatal("Exiting because of timeout. Goodbye")
 
+	}()
+	//wait for goroutines to finish
+	wg.Wait()
 }
