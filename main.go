@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -94,9 +95,12 @@ func main() {
 	}()
 	<-ctx.Done()
 	// start goroutine that will exit program after 10 seconds
+	// in case graceful shutdown fails
 	go func() {
 		time.Sleep(10 * time.Second)
-		logrus.Fatal("Exiting because of timeout. Goodbye")
+		nonGracefulShutdownErr := fmt.Errorf("non-graceful shutdown because of timeout")
+		sentry.CaptureException(nonGracefulShutdownErr)
+		logrus.Fatal(nonGracefulShutdownErr)
 
 	}()
 	//wait for goroutines to finish
