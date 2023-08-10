@@ -315,11 +315,11 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 		}
 		logrus.WithFields(
 			logrus.Fields{
-				"payload_type": "payment",
-				"status":       fmt.Sprintf("%s", payment.Status),
-				"latency":      time.Since(startTime).Seconds(),
-				"amount":       payment.ValueSat,
-				"payment_hash": payment.PaymentHash,
+				"payload_type":     "payment",
+				"status":           fmt.Sprintf("%s", payment.Status),
+				"rabbitmq_latency": time.Since(startTime).Seconds(),
+				"amount":           payment.ValueSat,
+				"payment_hash":     payment.PaymentHash,
 			}).Info("published payment")
 	}
 
@@ -340,10 +340,13 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 		}
 		logrus.WithFields(
 			logrus.Fields{
-				"payload_type": "invoice",
-				"latency":      time.Since(startTime).Seconds(),
-				"amount":       invoice.AmtPaidSat,
-				"payment_hash": hex.EncodeToString(invoice.RHash),
+				"payload_type":     "invoice",
+				"rabbitmq_latency": time.Since(startTime).Seconds(),
+				"amount":           invoice.AmtPaidSat,
+				"keysend":          invoice.IsKeysend,
+				"add_index":        invoice.AddIndex,
+				"settle_date":      invoice.SettleDate,
+				"payment_hash":     hex.EncodeToString(invoice.RHash),
 			}).Info("published invoice")
 		//add it to the database if we have one
 		if svc.db != nil {
