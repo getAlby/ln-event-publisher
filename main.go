@@ -4,6 +4,9 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getsentry/sentry-go"
@@ -70,18 +73,33 @@ func main() {
 	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
 	//start both subscriptions
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
 		err = svc.startInvoiceSubscription(ctx)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
 			logrus.Fatal(err)
 		}
+		logrus.Info("invoice routine done")
+		wg.Done()
 	}()
+	wg.Add(1)
 	go func() {
 		err = svc.startPaymentSubscription(ctx)
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), context.Canceled.Error()) {
 			logrus.Fatal(err)
 		}
+		logrus.Info("payment routine done")
+		wg.Done()
 	}()
 	<-ctx.Done()
+	// start goroutine that will exit program after 10 seconds
+	go func() {
+		time.Sleep(10 * time.Second)
+		logrus.Fatal("Exiting because of timeout. Goodbye")
 
+	}()
+	//wait for goroutines to finish
+	wg.Wait()
+	logrus.Info("Exited gracefully. Goodbye.")
 }
