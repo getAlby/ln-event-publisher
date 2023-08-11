@@ -301,6 +301,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 	//if the payment was in the database as final then we already published it
 	//and we only publish completed payments
 	if notInflight && !alreadyPublished {
+		startTime := time.Now()
 		err := svc.PublishPayload(ctx, payment, LNDPaymentExchange, routingKey)
 		if err != nil {
 			logrus.WithFields(
@@ -314,9 +315,11 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 		}
 		logrus.WithFields(
 			logrus.Fields{
-				"payload_type": "payment",
-				"status":       fmt.Sprintf("%s", payment.Status),
-				"payment_hash": payment.PaymentHash,
+				"payload_type":     "payment",
+				"status":           fmt.Sprintf("%s", payment.Status),
+				"rabbitmq_latency": time.Since(startTime).Seconds(),
+				"amount":           payment.ValueSat,
+				"payment_hash":     payment.PaymentHash,
 			}).Info("published payment")
 	}
 
@@ -325,6 +328,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
 	if invoice.State == lnrpc.Invoice_SETTLED {
+		startTime := time.Now()
 		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 		if err != nil {
 			logrus.WithFields(
@@ -336,8 +340,13 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 		}
 		logrus.WithFields(
 			logrus.Fields{
-				"payload_type": "invoice",
-				"payment_hash": hex.EncodeToString(invoice.RHash),
+				"payload_type":     "invoice",
+				"rabbitmq_latency": time.Since(startTime).Seconds(),
+				"amount":           invoice.AmtPaidSat,
+				"keysend":          invoice.IsKeysend,
+				"add_index":        invoice.AddIndex,
+				"settle_date":      invoice.SettleDate,
+				"payment_hash":     hex.EncodeToString(invoice.RHash),
 			}).Info("published invoice")
 		//add it to the database if we have one
 		if svc.db != nil {
@@ -356,7 +365,6 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(svc.cfg.RabbitMQTimeoutSeconds)*time.Second)
 	defer cancel()
-	logrus.Info("Publishing message")
 	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
 		timeoutCtx,
 		//todo from config
