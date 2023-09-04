@@ -273,6 +273,7 @@ func (mlnd *MockLND) mockPaidInvoice(amtPaid int64, memo string) error {
 		AmtPaidSat:     amtPaid,
 		AmtPaidMsat:    1000 * amtPaid,
 		State:          lnrpc.Invoice_SETTLED,
+		Htlcs:          []*lnrpc.InvoiceHTLC{},
 	}
 	mlnd.Sub.invoiceChan <- incoming
 	return nil
