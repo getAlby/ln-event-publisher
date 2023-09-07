@@ -43,8 +43,7 @@ const (
 	LNDPaymentSuccessRoutingKey = "payment.outgoing.settled"
 	LNDPaymentErrorRoutingKey   = "payment.outgoing.error"
 
-	TLV_WALLET_ID  = 696969
-	TLV_BOOSTAGRAM = 7629169
+	TLV_WALLET_ID = 696969
 )
 
 type Service struct {
@@ -351,11 +350,9 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 				"settle_date":      invoice.SettleDate,
 				"payment_hash":     hex.EncodeToString(invoice.RHash),
 			}).Info("published invoice")
-		//add it to the database if we have one
-		if svc.db != nil {
-			return svc.AddLastPublishedInvoice(ctx, invoice)
-		}
+		return svc.AddLastPublishedInvoice(ctx, invoice)
 	}
+	logrus.WithField("payment_hash", hex.EncodeToString(invoice.RHash)).WithField("state", invoice.State).Info("not publishing invoice")
 	return nil
 }
 
