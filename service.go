@@ -352,11 +352,6 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 			}).Info("published invoice")
 		return svc.AddLastPublishedInvoice(ctx, invoice)
 	}
-	logrus.
-		WithField("payment_hash", hex.EncodeToString(invoice.RHash)).
-		WithField("state", invoice.State).
-		WithField("keysend", invoice.IsKeysend).
-		Info("not publishing invoice")
 	return nil
 }
 
