@@ -42,6 +42,8 @@ const (
 	LNDInvoiceRoutingKey        = "invoice.incoming.settled"
 	LNDPaymentSuccessRoutingKey = "payment.outgoing.settled"
 	LNDPaymentErrorRoutingKey   = "payment.outgoing.error"
+
+	TLV_WALLET_ID = 696969
 )
 
 type Service struct {
@@ -327,7 +329,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 }
 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
-	if invoice.State == lnrpc.Invoice_SETTLED {
+	if shouldPublishInvoice(invoice) {
 		startTime := time.Now()
 		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 		if err != nil {
@@ -348,12 +350,30 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 				"settle_date":      invoice.SettleDate,
 				"payment_hash":     hex.EncodeToString(invoice.RHash),
 			}).Info("published invoice")
-		//add it to the database if we have one
-		if svc.db != nil {
-			return svc.AddLastPublishedInvoice(ctx, invoice)
-		}
+		return svc.AddLastPublishedInvoice(ctx, invoice)
 	}
+	logrus.
+		WithField("payment_hash", hex.EncodeToString(invoice.RHash)).
+		WithField("state", invoice.State).
+		WithField("keysend", invoice.IsKeysend).
+		Info("not publishing invoice")
 	return nil
+}
+
+// check if we need to publish an invoice
+func shouldPublishInvoice(invoice *lnrpc.Invoice) (ok bool) {
+
+	//don't publish unsettled invoice
+	if invoice.State != lnrpc.Invoice_SETTLED {
+		return false
+	}
+	//if the invoice is keysend, it needs record 696969
+	//(invoices always have always at least one htlc in them)
+	recs := invoice.Htlcs[0].CustomRecords
+	if invoice.IsKeysend {
+		return recs[TLV_WALLET_ID] != nil
+	}
+	return true
 }
 
 func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exchange, key string) error {
