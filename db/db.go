@@ -1,6 +1,7 @@
-package main
+package db
 
 import (
+	"github.com/getAlby/ln-event-publisher/config"
 	"log"
 	"os"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func OpenDB(config *Config) (db *gorm.DB, err error) {
+func OpenDB(config *config.Config) (db *gorm.DB, err error) {
 	//overwrite logger so we don't print warnings for slow sql
 	//because we use db transactions that span the rabbitmq publish operation
 	dbLogger := logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/getAlby/ln-event-publisher/service"
 	"testing"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -9,7 +10,7 @@ import (
 
 func TestCheckInvoice(t *testing.T) {
 	//test non keysend
-	assert.True(t, shouldPublishInvoice(&lnrpc.Invoice{
+	assert.True(t, service.ShouldPublishInvoice(&lnrpc.Invoice{
 		State:     lnrpc.Invoice_SETTLED,
 		IsKeysend: false,
 		Htlcs: []*lnrpc.InvoiceHTLC{
@@ -28,7 +29,7 @@ func TestCheckInvoice(t *testing.T) {
 		},
 	}))
 	//test keysend with wallet id tlv
-	assert.True(t, shouldPublishInvoice(&lnrpc.Invoice{
+	assert.True(t, service.ShouldPublishInvoice(&lnrpc.Invoice{
 		State:     lnrpc.Invoice_SETTLED,
 		IsKeysend: true,
 		Htlcs: []*lnrpc.InvoiceHTLC{
@@ -50,7 +51,7 @@ func TestCheckInvoice(t *testing.T) {
 		},
 	}))
 	//test keysend without wallet id tlv
-	assert.False(t, shouldPublishInvoice(&lnrpc.Invoice{
+	assert.False(t, service.ShouldPublishInvoice(&lnrpc.Invoice{
 		State:     lnrpc.Invoice_SETTLED,
 		IsKeysend: true,
 		Htlcs: []*lnrpc.InvoiceHTLC{

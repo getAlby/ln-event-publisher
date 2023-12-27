@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/getAlby/ln-event-publisher/config"
+	db2 "github.com/getAlby/ln-event-publisher/db"
+	"github.com/getAlby/ln-event-publisher/service"
 	"os"
 	"testing"
 	"time"
@@ -16,9 +19,9 @@ import (
 	"google.golang.org/grpc"
 )
 
-func createTestService(t *testing.T, cfg *Config, exchange, routingKey string) (svc *Service, mlnd *MockLND, msgs <-chan amqp091.Delivery) {
+func createTestService(t *testing.T, cfg *config.Config, exchange, routingKey string) (svc *service.Service, mlnd *MockLND, msgs <-chan amqp091.Delivery) {
 
-	svc = &Service{cfg: cfg}
+	svc = &service.Service{Cfg: cfg}
 	mlnd = &MockLND{
 		Sub: &MockSubscribeInvoices{invoiceChan: make(chan *lnrpc.Invoice)},
 		PaymentSub: &MockSubscribePayments{
@@ -31,7 +34,7 @@ func createTestService(t *testing.T, cfg *Config, exchange, routingKey string) (
 	assert.NoError(t, err)
 
 	//sub to the rabbit exchange ourselves to test e2e
-	q, err := svc.rabbitChannel.QueueDeclare(
+	q, err := svc.RabbitChannel.QueueDeclare(
 		"integration_test",
 		true,
 		false,
@@ -40,18 +43,18 @@ func createTestService(t *testing.T, cfg *Config, exchange, routingKey string) (
 		nil,
 	)
 	assert.NoError(t, err)
-	err = svc.rabbitChannel.QueueBind(q.Name, routingKey, exchange, false, nil)
+	err = svc.RabbitChannel.QueueBind(q.Name, routingKey, exchange, false, nil)
 	assert.NoError(t, err)
 
 	// - init PG
-	db, err := OpenDB(cfg)
+	db, err := db2.OpenDB(cfg)
 	assert.NoError(t, err)
-	svc.db = db
-	svc.lnd = mlnd
+	svc.Db = db
+	svc.Lnd = mlnd
 
 	//init rabbit channel
 	//consume channel to check that invoice was published
-	m, err := svc.rabbitChannel.Consume(
+	m, err := svc.RabbitChannel.Consume(
 		q.Name,
 		"",
 		true,
@@ -64,14 +67,14 @@ func createTestService(t *testing.T, cfg *Config, exchange, routingKey string) (
 	return svc, mlnd, m
 }
 func TestInvoicePublish(t *testing.T) {
-	cfg := &Config{
+	cfg := &config.Config{
 		DatabaseUri: os.Getenv("DATABASE_URI"),
 		RabbitMQUri: os.Getenv("RABBITMQ_URI"),
 	}
-	svc, mlnd, m := createTestService(t, cfg, LNDInvoiceExchange, LNDInvoiceRoutingKey)
+	svc, mlnd, m := createTestService(t, cfg, service.LNDInvoiceExchange, service.LNDInvoiceRoutingKey)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		svc.startInvoiceSubscription(ctx)
+		svc.StartInvoiceSubscription(ctx)
 	}()
 	// - mock incoming invoice
 	// the new invoice that will be saved will have addIndex + 1
@@ -90,21 +93,21 @@ func TestInvoicePublish(t *testing.T) {
 
 	//stop service
 	cancel()
-	svc.rabbitChannel.Close()
+	svc.RabbitChannel.Close()
 	// - clean up database
-	svc.db.Exec("delete from invoices;")
+	svc.Db.Exec("delete from invoices;")
 }
 func TestPaymentPublish(t *testing.T) {
-	cfg := &Config{
+	cfg := &config.Config{
 		DatabaseUri:            os.Getenv("DATABASE_URI"),
 		RabbitMQUri:            os.Getenv("RABBITMQ_URI"),
 		RabbitMQTimeoutSeconds: 1,
 	}
-	svc, mlnd, m := createTestService(t, cfg, LNDPaymentExchange, "payment.outgoing.*")
-	defer svc.db.Exec("delete from payments;")
+	svc, mlnd, m := createTestService(t, cfg, service.LNDPaymentExchange, "payment.outgoing.*")
+	defer svc.Db.Exec("delete from payments;")
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		err := svc.startPaymentSubscription(ctx)
+		err := svc.StartPaymentSubscription(ctx)
 		assert.EqualError(t, err, context.Canceled.Error())
 	}()
 	// - mock outgoing payment
@@ -170,7 +173,7 @@ func TestPaymentPublish(t *testing.T) {
 	//   - start service again,
 	ctx, cancel2 := context.WithCancel(context.Background())
 	go func() {
-		err := svc.startPaymentSubscription(ctx)
+		err := svc.StartPaymentSubscription(ctx)
 		assert.EqualError(t, err, context.Canceled.Error())
 	}()
 	// test that all new updates are being published
@@ -187,7 +190,7 @@ func TestPaymentPublish(t *testing.T) {
 	timedOut, receivedPayment = timeoutOrNewPaymentFromRabbit(t, m)
 	assert.True(t, timedOut)
 	cancel2()
-	svc.rabbitChannel.Close()
+	svc.RabbitChannel.Close()
 }
 
 func timeoutOrNewPaymentFromRabbit(t *testing.T, m <-chan amqp091.Delivery) (timeout bool, payment *lnrpc.Payment) {
