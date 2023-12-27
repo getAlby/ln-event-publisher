@@ -324,3 +324,7 @@ func (mlnd *MockLND) ListPayments(ctx context.Context, req *lnrpc.ListPaymentsRe
 		Payments: mlnd.ListPaymentsResponse,
 	}, nil
 }
+
+func (mlnd *MockLND) LookupInvoice(ctx context.Context, req *lnrpc.PaymentHash, options ...grpc.CallOption) (*lnrpc.Invoice, error) {
+	panic("not implemented") // TODO: Implement
+}
