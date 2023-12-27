@@ -388,3 +388,19 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 
 	return err
 }
+
+func (svc *Service) RepublishInvoice(ctx context.Context, paymentHash *lnrpc.PaymentHash) {
+	invoice, err := svc.Lnd.LookupInvoice(ctx, paymentHash)
+	if err != nil {
+		sentry.CaptureException(err)
+		logrus.Error("Invoice NOT FOUND ", paymentHash, err)
+		return
+	}
+	err = svc.ProcessInvoice(ctx, invoice)
+	if err != nil {
+		sentry.CaptureException(err)
+		logrus.Error("ERROR while trying to republish invoice ", paymentHash, err)
+	} else {
+		logrus.Info("Invoice Republished ", paymentHash, err)
+	}
+}

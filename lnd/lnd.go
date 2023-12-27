@@ -139,3 +139,7 @@ func (wrapper *LNDWrapper) SubscribePayments(ctx context.Context, req *routerrpc
 func (wrapper *LNDWrapper) ListPayments(ctx context.Context, req *lnrpc.ListPaymentsRequest, options ...grpc.CallOption) (*lnrpc.ListPaymentsResponse, error) {
 	return wrapper.client.ListPayments(ctx, req)
 }
+
+func (wrapper *LNDWrapper) LookupInvoice(ctx context.Context, req *lnrpc.PaymentHash, options ...grpc.CallOption) (*lnrpc.Invoice, error) {
+	return wrapper.client.LookupInvoice(ctx, req)
+}

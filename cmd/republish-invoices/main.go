@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"github.com/getAlby/ln-event-publisher/config"
-	"github.com/getAlby/ln-event-publisher/db"
 	"github.com/getAlby/ln-event-publisher/lnd"
 	"github.com/getAlby/ln-event-publisher/service"
 	"github.com/getsentry/sentry-go"
@@ -11,6 +11,8 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/sirupsen/logrus"
+	"os"
+	"os/signal"
 )
 
 func main() {
@@ -50,21 +52,29 @@ func main() {
 		logrus.Fatal(err)
 	}
 	logrus.Infof("Connected to LND: %s - %s", resp.Alias, resp.IdentityPubkey)
-	logrus.Info("Opening PG database")
-	db, err := db.OpenDB(c)
-	if err != nil {
-		sentry.CaptureException(err)
-		logrus.Fatal(err)
-	}
 	svc := &service.Service{
 		Cfg: c,
 		Lnd: client,
-		Db:  db,
 	}
 	err = svc.InitRabbitMq()
 	if err != nil {
 		sentry.CaptureException(err)
 		logrus.Fatal(err)
 	}
+	backgroundCtx := context.Background()
+	ctx, _ := signal.NotifyContext(backgroundCtx, os.Interrupt)
 
+	for i := 0; i < len(c.RepublishInvoiceHashes); i++ {
+		hashBytes, err := hex.DecodeString(c.RepublishInvoiceHashes[i])
+		if err != nil {
+			logrus.Error("Invalid Hash ", c.RepublishInvoiceHashes[i], " ", err)
+			continue
+		}
+
+		// Create a PaymentHash struct
+		paymentHash := &lnrpc.PaymentHash{
+			RHash: hashBytes,
+		}
+		svc.RepublishInvoice(ctx, paymentHash)
+	}
 }
