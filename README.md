@@ -24,7 +24,7 @@ Possible missed-while-offline outgoing payments are handled by looking up the ea
 - Payload [lnrpc.Payment](https://github.com/lightningnetwork/lnd/blob/master/lnrpc/lightning.pb.go#L12612)
 - Routing keys `payment.outgoing.settled`, `payment.outgoing.error`
 
-# REPUBLISH INVOICES
+# Republish Invoices
 
 If you need to republish settled invoices to update state in lndhub, you can use the cmd/republish-invoices by providing all payment hashes separated by commas:
 - "REPUBLISH_INVOICE_HASHES" : `<hash_1>,<hash_2>....<hash_n>`
