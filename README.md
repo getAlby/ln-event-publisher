@@ -30,5 +30,7 @@ If you need to republish settled invoices to update state in lndhub, you can use
 - "REPUBLISH_INVOICE_HASHES" : `<hash_1>,<hash_2>....<hash_n>`
 
 Use this in a job by setting:
-```command:
-- /bin/republish-invoices```
+```
+command:
+- /bin/republish-invoices
+```
