@@ -396,11 +396,27 @@ func (svc *Service) RepublishInvoice(ctx context.Context, paymentHash *lnrpc.Pay
 		logrus.Error("Invoice NOT FOUND ", paymentHash, err)
 		return
 	}
-	err = svc.ProcessInvoice(ctx, invoice)
-	if err != nil {
-		sentry.CaptureException(err)
-		logrus.Error("ERROR while trying to republish invoice ", paymentHash, err)
-	} else {
-		logrus.Info("Invoice Republished ", paymentHash, err)
+	if ShouldPublishInvoice(invoice) {
+		startTime := time.Now()
+		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
+		if err != nil {
+			sentry.CaptureException(err)
+			logrus.WithFields(
+				logrus.Fields{
+					"payload_type": "invoice",
+					"payment_hash": hex.EncodeToString(invoice.RHash),
+				}).WithError(err).Error("error publishing invoice")
+			return
+		}
+		logrus.WithFields(
+			logrus.Fields{
+				"payload_type":     "invoice",
+				"rabbitmq_latency": time.Since(startTime).Seconds(),
+				"amount":           invoice.AmtPaidSat,
+				"keysend":          invoice.IsKeysend,
+				"add_index":        invoice.AddIndex,
+				"settle_date":      invoice.SettleDate,
+				"payment_hash":     hex.EncodeToString(invoice.RHash),
+			}).Info("published invoice")
 	}
 }
