@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"bytes"
@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/getAlby/ln-event-publisher/config"
+	"github.com/getAlby/ln-event-publisher/db"
 	"time"
 
 	"github.com/getAlby/ln-event-publisher/lnd"
@@ -22,19 +24,6 @@ var codeMappings = map[lnrpc.Payment_PaymentStatus]string{
 	lnrpc.Payment_SUCCEEDED: LNDPaymentSuccessRoutingKey,
 }
 
-type Config struct {
-	LNDAddress              string `envconfig:"LND_ADDRESS" required:"true"`
-	LNDMacaroonFile         string `envconfig:"LND_MACAROON_FILE"`
-	LNDCertFile             string `envconfig:"LND_CERT_FILE"`
-	DatabaseUri             string `envconfig:"DATABASE_URI" required:"true"`
-	DatabaseMaxConns        int    `envconfig:"DATABASE_MAX_CONNS" default:"10"`
-	DatabaseMaxIdleConns    int    `envconfig:"DATABASE_MAX_IDLE_CONNS" default:"5"`
-	DatabaseConnMaxLifetime int    `envconfig:"DATABASE_CONN_MAX_LIFETIME" default:"1800"` // 30 minutes
-	RabbitMQUri             string `envconfig:"RABBITMQ_URI" required:"true"`
-	RabbitMQTimeoutSeconds  int    `envconfig:"RABBITMQ_TIMEOUT_SECONDS" default:"10"`
-	SentryDSN               string `envconfig:"SENTRY_DSN"`
-}
-
 const (
 	LNDInvoiceExchange          = "lnd_invoice"
 	LNDChannelExchange          = "lnd_channel"
@@ -47,14 +36,14 @@ const (
 )
 
 type Service struct {
-	cfg           *Config
-	lnd           lnd.LightningClientWrapper
-	rabbitChannel *amqp.Channel
-	db            *gorm.DB
+	Cfg           *config.Config
+	Lnd           lnd.LightningClientWrapper
+	RabbitChannel *amqp.Channel
+	Db            *gorm.DB
 }
 
 func (svc *Service) InitRabbitMq() (err error) {
-	conn, err := amqp.Dial(svc.cfg.RabbitMQUri)
+	conn, err := amqp.Dial(svc.Cfg.RabbitMQUri)
 	if err != nil {
 		return err
 	}
@@ -88,18 +77,18 @@ func (svc *Service) InitRabbitMq() (err error) {
 	if err != nil {
 		return err
 	}
-	svc.rabbitChannel = ch
+	svc.RabbitChannel = ch
 
 	// Put the channel in confirm mode
-	svc.rabbitChannel.Confirm(false)
+	svc.RabbitChannel.Confirm(false)
 
 	return
 }
 
 func (svc *Service) lookupLastInvoiceIndex(ctx context.Context) (index uint64, err error) {
-	//get last invoice from db
-	inv := &Invoice{}
-	tx := svc.db.WithContext(ctx).Last(inv)
+	//get last invoice from Db
+	inv := &db.Invoice{}
+	tx := svc.Db.WithContext(ctx).Last(inv)
 	if tx.Error != nil && tx.Error != gorm.ErrRecordNotFound {
 		return 0, tx.Error
 	}
@@ -110,26 +99,26 @@ func (svc *Service) lookupLastInvoiceIndex(ctx context.Context) (index uint64, e
 }
 
 func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPaymentCreationTimeUnix int64, err error) {
-	//get the creation time in unix seconds of the earliest non-final payment in db
+	//get the creation time in unix seconds of the earliest non-final payment in Db
 	//that is not older than 24h (to avoid putting too much stress on LND)
 	//so we assume that we are never online for longer than 24h
-	//in case there are no non-final payments in the db, we get the last completed payment
-	firstInflightOrLastCompleted := &Payment{}
-	err = svc.db.Limit(1).Where(&Payment{
+	//in case there are no non-final payments in the Db, we get the last completed payment
+	firstInflightOrLastCompleted := &db.Payment{}
+	err = svc.Db.Limit(1).Where(&db.Payment{
 		Status: lnrpc.Payment_IN_FLIGHT,
 	}).Where("creation_time_ns > ?", time.Now().Add(-24*time.Hour).UnixNano()).Order("creation_time_ns ASC").First(firstInflightOrLastCompleted).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			//look up last completed payment that we have instead
 			//and use that one.
-			err = svc.db.WithContext(ctx).Last(firstInflightOrLastCompleted).Error
+			err = svc.Db.WithContext(ctx).Last(firstInflightOrLastCompleted).Error
 			if err != nil {
 				if err == gorm.ErrRecordNotFound {
-					//if we get here there are no payment in the db:
+					//if we get here there are no payment in the Db:
 					//first start, nothing found
 					return 0, nil
 				}
-				//real db error
+				//real Db error
 				return 0, err
 			}
 			return firstInflightOrLastCompleted.CreationTimeNs / 1e9, nil
@@ -144,14 +133,14 @@ func (svc *Service) lookupLastPaymentTimestamp(ctx context.Context) (lastPayment
 }
 
 func (svc *Service) AddLastPublishedInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
-	return svc.db.WithContext(ctx).Create(&Invoice{
+	return svc.Db.WithContext(ctx).Create(&db.Invoice{
 		AddIndex:    invoice.AddIndex,
 		SettleIndex: invoice.SettleIndex,
 	}).Error
 }
 
 func (svc *Service) StorePayment(ctx context.Context, tx *gorm.DB, payment *lnrpc.Payment) (alreadyProcessed bool, err error) {
-	toUpdate := &Payment{
+	toUpdate := &db.Payment{
 		Model: gorm.Model{
 			ID: uint(payment.PaymentIndex),
 		},
@@ -191,7 +180,7 @@ func (svc *Service) CheckPaymentsSinceLast(ctx context.Context) error {
 		return nil
 	}
 	//make LND listpayments request starting from the first payment that we might have missed
-	paymentResponse, err := svc.lnd.ListPayments(ctx, &lnrpc.ListPaymentsRequest{
+	paymentResponse, err := svc.Lnd.ListPayments(ctx, &lnrpc.ListPaymentsRequest{
 		//apparently LL considers a failed payment to be "incomplete"
 		IncludeIncomplete: true,
 		CreationDateStart: uint64(ts),
@@ -218,8 +207,8 @@ func (svc *Service) CheckPaymentsSinceLast(ctx context.Context) error {
 	return nil
 }
 
-func (svc *Service) startPaymentSubscription(ctx context.Context) error {
-	paymentSub, err := svc.lnd.SubscribePayments(ctx, &routerrpc.TrackPaymentsRequest{})
+func (svc *Service) StartPaymentSubscription(ctx context.Context) error {
+	paymentSub, err := svc.Lnd.SubscribePayments(ctx, &routerrpc.TrackPaymentsRequest{})
 	if err != nil {
 		sentry.CaptureException(err)
 		return err
@@ -253,12 +242,12 @@ func (svc *Service) startPaymentSubscription(ctx context.Context) error {
 	}
 }
 
-func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
+func (svc *Service) StartInvoiceSubscription(ctx context.Context) error {
 	settleIndex, err := svc.lookupLastInvoiceIndex(ctx)
 	if err != nil {
 		return err
 	}
-	invoiceSub, err := svc.lnd.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{
+	invoiceSub, err := svc.Lnd.SubscribeInvoices(ctx, &lnrpc.InvoiceSubscription{
 		SettleIndex: settleIndex,
 	})
 	if err != nil {
@@ -286,7 +275,7 @@ func (svc *Service) startInvoiceSubscription(ctx context.Context) error {
 }
 
 func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) error {
-	tx := svc.db.Begin()
+	tx := svc.Db.Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -329,7 +318,7 @@ func (svc *Service) ProcessPayment(ctx context.Context, payment *lnrpc.Payment) 
 }
 
 func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) error {
-	if shouldPublishInvoice(invoice) {
+	if ShouldPublishInvoice(invoice) {
 		startTime := time.Now()
 		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
 		if err != nil {
@@ -356,7 +345,7 @@ func (svc *Service) ProcessInvoice(ctx context.Context, invoice *lnrpc.Invoice) 
 }
 
 // check if we need to publish an invoice
-func shouldPublishInvoice(invoice *lnrpc.Invoice) (ok bool) {
+func ShouldPublishInvoice(invoice *lnrpc.Invoice) (ok bool) {
 
 	//don't publish unsettled invoice
 	if invoice.State != lnrpc.Invoice_SETTLED {
@@ -378,9 +367,9 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 		return err
 	}
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(svc.cfg.RabbitMQTimeoutSeconds)*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(svc.Cfg.RabbitMQTimeoutSeconds)*time.Second)
 	defer cancel()
-	conf, err := svc.rabbitChannel.PublishWithDeferredConfirmWithContext(
+	conf, err := svc.RabbitChannel.PublishWithDeferredConfirmWithContext(
 		timeoutCtx,
 		//todo from config
 		exchange, key, false, false, amqp.Publishing{
@@ -398,4 +387,36 @@ func (svc *Service) PublishPayload(ctx context.Context, payload interface{}, exc
 	}
 
 	return err
+}
+
+func (svc *Service) RepublishInvoice(ctx context.Context, paymentHash *lnrpc.PaymentHash) {
+	invoice, err := svc.Lnd.LookupInvoice(ctx, paymentHash)
+	if err != nil {
+		sentry.CaptureException(err)
+		logrus.Error("Invoice NOT FOUND ", paymentHash, err)
+		return
+	}
+	if ShouldPublishInvoice(invoice) {
+		startTime := time.Now()
+		err := svc.PublishPayload(ctx, invoice, LNDInvoiceExchange, LNDInvoiceRoutingKey)
+		if err != nil {
+			sentry.CaptureException(err)
+			logrus.WithFields(
+				logrus.Fields{
+					"payload_type": "invoice",
+					"payment_hash": hex.EncodeToString(invoice.RHash),
+				}).WithError(err).Error("error publishing invoice")
+			return
+		}
+		logrus.WithFields(
+			logrus.Fields{
+				"payload_type":     "invoice",
+				"rabbitmq_latency": time.Since(startTime).Seconds(),
+				"amount":           invoice.AmtPaidSat,
+				"keysend":          invoice.IsKeysend,
+				"add_index":        invoice.AddIndex,
+				"settle_date":      invoice.SettleDate,
+				"payment_hash":     hex.EncodeToString(invoice.RHash),
+			}).Info("published invoice")
+	}
 }
